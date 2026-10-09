@@ -62,18 +62,15 @@ b,strong{font-weight:600}
 #themeBtn:hover{background:var(--hover)}
 /* ============ карточки ============ */
 .card{background:var(--card); border:1px solid var(--border); border-radius:16px; box-shadow:var(--shadow)}
-/* ============ сводка ============ */
-.summary{padding:18px 20px 16px; margin-bottom:14px}
-.sum-top{display:flex; justify-content:space-between; align-items:flex-end; gap:16px; flex-wrap:wrap}
+/* ============ сводка (минимализм) ============ */
+.summary{padding:18px 20px 14px; margin-bottom:14px}
 .lbl{font-size:11.5px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); margin-bottom:4px}
-.big{font-size:34px; font-weight:750; letter-spacing:-.8px; line-height:1.1}
-.mini{font-size:12.5px; color:var(--muted); margin-top:2px}
-.sum-right{display:flex; flex-direction:column; gap:7px; align-items:flex-end}
-.sum-line{display:flex; align-items:baseline; gap:10px}
-.sum-line .lbl{margin:0}
-.sum-line b{font-size:19px; font-weight:700; font-variant-numeric:tabular-nums}
-.sum-line.bought b{color:var(--ok)}
-.divider{height:1px; background:var(--border); margin:14px 0 12px}
+.big{font-size:36px; font-weight:750; letter-spacing:-.9px; line-height:1.08}
+.sum-meta{display:flex; align-items:baseline; gap:9px; flex-wrap:wrap; margin-top:7px;
+  color:var(--muted); font-size:13.5px}
+.sum-meta b{color:var(--text); font-weight:650; font-variant-numeric:tabular-nums}
+.sum-meta .bought-txt b{color:var(--ok)}
+.dot-sep{opacity:.45}
 .chips{display:flex; flex-wrap:wrap; gap:8px}
 .chip{display:inline-flex; align-items:center; gap:7px; padding:5px 11px; border-radius:999px;
   background:var(--accent-weak); font-size:13px; color:var(--text);
@@ -273,8 +270,7 @@ b,strong{font-weight:600}
 .linkish.warn:hover{color:var(--danger)}
 /* ============ адаптив ============ */
 @media (max-width:680px){
-  .big{font-size:28px}
-  .sum-right{align-items:flex-start}
+  .big{font-size:30px}
   .form-grid{grid-template-columns:minmax(0,1fr) 96px;
     grid-template-areas:"name name" "price cur" "cat cat" "url url" "btn btn" "desc desc"}
   .item .desc{white-space:normal}
@@ -303,23 +299,16 @@ b,strong{font-weight:600}
   <!-- ======== сводка ======== -->
   <section class="card summary" aria-label="Сводка">
     <div class="sum-top">
-      <div>
-        <div class="lbl">Всего к покупке</div>
-        <div class="big num" id="sumTotal">0 ₴</div>
-        <div class="mini" id="sumCount"></div>
-      </div>
-      <div class="sum-right">
-        <div class="sum-line">
-          <span class="lbl">Осталось купить</span>
-          <b class="num" id="sumLeft">0 ₴</b>
-        </div>
-        <div class="sum-line bought">
-          <span class="lbl">Уже куплено</span>
-          <b class="num" id="sumBought">0 ₴</b>
-        </div>
+      <div class="lbl">Всего к покупке</div>
+      <div class="big num" id="sumTotal">0 ₴</div>
+      <div class="sum-meta num">
+        <span>Осталось <b id="sumLeft">0 ₴</b></span>
+        <span class="dot-sep">·</span>
+        <span class="bought-txt">Куплено <b id="sumBought">0 ₴</b></span>
+        <span class="dot-sep">·</span>
+        <span id="sumCount"></span>
       </div>
     </div>
-    <div class="divider"></div>
     <div class="chips" id="sumChips"></div>
     <div class="filter-info" id="filterInfo"></div>
   </section>
@@ -523,6 +512,7 @@ const fmtSum  = x => nf.format(x.sum) + ' ' + SYM[x.cur];
 const fmtSums = arr => arr.map(fmtSum).join(' + ');
 const fmtPrice = it => it.price == null ? '—' : nf.format(it.price) + ' ' + SYM[it.currency];
 const itemsOf = catId => state.items.filter(i => i.categoryId === catId);
+
 
 /* ================= кастомные дропдауны ================= */
 const catOptions = () => [
@@ -1170,7 +1160,7 @@ $('#wipeBtn').addEventListener('click', async () => {
   if (ok){ state = { categories: [], items: [] }; save(); render(); }
 });
 
-/* ================= анимированный фон: «жидкий хром / кристаллы» ================= */
+/* ================= анимированный фон: «жидкий шёлк-хром» ================= */
 const BGFX = (() => {
   const cv = document.getElementById('bgfx');
   if (!cv) return { setTheme(){} };
@@ -1178,40 +1168,41 @@ const BGFX = (() => {
   if (!ctx) return { setTheme(){} }; /* нет canvas-движка — просто пропускаем */
   const reduceMotion = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
   let W = 0, H = 0, raf = null, running = false, lastTs = 0, t = 0, dark = false;
-  let bgGrid = null, debris = [], hudSeed = 0;
-  let nextKick = 3, kickT = -1;
+  let bgGrid = null, strands = [], hairs = [];
+  let nextKick = 4, kickT = -1;
 
-  /* --- палитры --- */
+  /* палитры: инверсия настроения */
   const P = () => dark ? {
-    veil: '7,7,8', hud: 'rgba(226,232,255,.4)', hudLine: 'rgba(226,232,255,.22)',
-    /* кристаллические клинья: светятся */
-    shardStops: [['#ffffff',.95],['#aab8ff',.85],['#5b6cff',.7],['#232f66',.45]],
-    accentShard: [['#ffd9de',.9],['#ff4d6b',.7],['#7a0f2a',.4]],
-    core: ['rgba(240,250,255,.95)','rgba(126,140,255,.5)'],
-    debris: 'rgba(223,233,255,.8)', debrisRed: 'rgba(255,77,107,.6)',
-    glow: 16
+    veil: '7,7,8', hud: 'rgba(226,232,255,.55)', hudLine: 'rgba(226,232,255,.26)',
+    main:  ['#ffffff', '#b9c6ff', '#8ea0ff', '#dfe6ff'],
+    ink:   ['#9fb4ff', '#4a5bd4'],
+    accent:['#ff4d6b'],
+    mainA: .5, inkA: .55, accA: .5,
+    lighter: true, glowEvery: 4, glowBlur: 13,
+    grid: 'rgba(120,140,220,.07)', gridLines: true,
+    hair: 'rgba(223,233,255,.5)', hairRed: 'rgba(255,77,107,.55)'
   } : {
-    veil: '244,246,249', hud: 'rgba(17,24,39,.42)', hudLine: 'rgba(17,24,39,.18)',
-    /* жидкий хром: чередование света и тени поперёк ленты */
-    chromeStops: [['#f7f9fb',.96],['#c3cad4',.9],['#eef1f5',.95],['#2c3340',.92],['#d8dde4',.85],['#10141b',.95]],
-    inkStops:    [['#59616f',.9],['#171b23',.95],['#e9edf2',.8]],
-    accent:      ['#ff3b52','#c11c3f'],
-    contour: 'rgba(17,24,39,.14)',
-    debris: 'rgba(16,20,29,.7)', debrisRed: 'rgba(255,59,82,.55)',
-    glow: 0
+    veil: '244,246,249', hud: 'rgba(17,24,39,.52)', hudLine: 'rgba(17,24,39,.2)',
+    main:  ['#f9fafc', '#c6cdd7', '#f1f3f6', '#39404d', '#aab2bd', '#141922'],
+    ink:   ['#3c4452', '#141922'],
+    accent:['#e2283f'],
+    mainA: .5, inkA: .6, accA: .55,
+    lighter: false, glowEvery: 0, glowBlur: 0,
+    grid: 'rgba(17,24,39,.09)', gridLines: false,
+    hair: 'rgba(16,20,29,.55)', hairRed: 'rgba(226,40,63,.6)'
   };
 
-  /* геометрия: хром-ленты (светлая) и кристаллы (тёмная) от якоря справа */
+  /* пучки: направление, длина, толщина, изгиб */
   const ARMS = [
-    { a: 2.85, L: .72, w: .085, k:  2.6, ph: 0.0, kind: 'main'  },
-    { a: 3.05, L: .60, w: .062, k: -1.8, ph: 1.4, kind: 'main'  },
-    { a: 2.60, L: .52, w: .055, k:  3.2, ph: 2.8, kind: 'main'  },
-    { a: 3.30, L: .44, w: .042, k: -2.3, ph: 4.0, kind: 'ink'   },
-    { a: 2.35, L: .38, w: .038, k:  1.5, ph: 5.1, kind: 'ink'   },
-    { a: 0.15, L: .20, w: .030, k: -2.0, ph: 0.7, kind: 'accent'},
-    { a: 2.95, L: .17, w: .026, k:  2.4, ph: 3.6, kind: 'accent'}
+    { a: 2.85, L: .74, w: 3.6, k:  2.2, ph: 0.0, kind: 'main',   n: 22 },
+    { a: 3.08, L: .60, w: 3.0, k: -1.7, ph: 1.4, kind: 'main',   n: 18 },
+    { a: 2.58, L: .52, w: 2.6, k:  2.9, ph: 2.8, kind: 'main',   n: 16 },
+    { a: 3.32, L: .44, w: 3.4, k: -2.1, ph: 4.0, kind: 'ink',    n: 12 },
+    { a: 2.32, L: .38, w: 3.0, k:  1.4, ph: 5.1, kind: 'ink',    n: 10 },
+    { a: 0.30, L: .15, w: 1.5, k: -0.7, ph: 0.7, kind: 'accent', n: 7  },
+    { a: 2.70, L: .13, w: 1.3, k:  0.8, ph: 3.6, kind: 'accent', n: 6  }
   ];
-  /* тонкие контурные дуги вокруг композиции */
+  /* контурные дуги вокруг композиции */
   const CONTOURS = [
     { rx: .30, ry: .22, a0: 2.4, a1: 5.2, ph: 0.0 },
     { rx: .42, ry: .30, a0: 2.9, a1: 5.6, ph: 2.1 },
@@ -1223,131 +1214,152 @@ const BGFX = (() => {
     const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
     cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    /* фон-сетка: в тёмной — техносетка линиями, в светлой — точки */
+    /* фон-сетка: тёмная — техносетка, светлая — точки */
     bgGrid = document.createElement('canvas');
     bgGrid.width = cv.width; bgGrid.height = cv.height;
     const g = bgGrid.getContext('2d');
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
-    if (dark){
-      g.strokeStyle = 'rgba(120,140,220,.07)'; g.lineWidth = 1;
+    const pal = P();
+    if (pal.gridLines){
+      g.strokeStyle = pal.grid; g.lineWidth = 1;
       for (let x = 0; x <= W; x += 46){ g.beginPath(); g.moveTo(x, 0); g.lineTo(x, H); g.stroke(); }
       for (let y = 0; y <= H; y += 46){ g.beginPath(); g.moveTo(0, y); g.lineTo(W, y); g.stroke(); }
     } else {
-      g.fillStyle = 'rgba(17,24,39,.09)';
+      g.fillStyle = pal.grid;
       for (let y = 30; y < H; y += 30)
         for (let x = 30; x < W; x += 30){ g.beginPath(); g.arc(x, y, 1.05, 0, Math.PI * 2); g.fill(); }
     }
-    /* мусор-осколки в правой половине */
-    debris = Array.from({ length: 9 }, () => {
-      const a = Math.random() * Math.PI * 2, rr = 0.06 + Math.random() * 0.30;
+    /* пряди: стабильные случайные параметры пучков */
+    strands = [];
+    ARMS.forEach((A, ai) => {
+      for (let q = 0; q < A.n; q++){
+        strands.push({
+          ai, kind: A.kind,
+          da: (Math.random() - .5) * 0.18,
+          dl: 0.66 + Math.random() * 0.40,
+          dw: 0.3 + Math.random() * 0.7,
+          ph: Math.random() * Math.PI * 2,
+          ph2: Math.random() * Math.PI * 2,
+          ci: q
+        });
+      }
+    });
+    /* волокна-волоски, дрейфующие у композиции */
+    hairs = Array.from({ length: 14 }, () => {
+      const a = Math.random() * Math.PI * 2, rr = 0.08 + Math.random() * 0.30;
       return {
-        x: W * 0.86 + Math.cos(a) * rr * W * 0.55, y: H * 0.42 + Math.sin(a) * rr * H * 0.8,
-        s: 4 + Math.random() * 14, rot: Math.random() * Math.PI,
-        vr: (Math.random() - .5) * 0.5, red: Math.random() < .25,
-        vx: (Math.random() - .5) * 10, vy: (Math.random() - .5) * 10, ph: Math.random() * 9
+        x: W * 0.86 + Math.cos(a) * rr * W * 0.5, y: H * 0.42 + Math.sin(a) * rr * H * 0.8,
+        len: 10 + Math.random() * 30, ang: Math.random() * Math.PI,
+        va: (Math.random() - .5) * 0.25, vx: (Math.random() - .5) * 8, vy: (Math.random() - .5) * 8,
+        ph: Math.random() * 9, red: Math.random() < .22
       };
     });
-    hudSeed = Math.random() * 100;
   }
 
-  const lerp = (a, b, k) => a + (b - a) * k;
-  const hex2rgb = hx => [parseInt(hx.slice(1,3),16), parseInt(hx.slice(3,5),16), parseInt(hx.slice(5,7),16)];
+  const hex2rgb = hx => [parseInt(hx.slice(1, 3), 16), parseInt(hx.slice(3, 5), 16), parseInt(hx.slice(5, 7), 16)];
 
-  /* хром-лента: сэмплы кривой; градиент ПОПЕРЁК с несколькими стопами (металл) */
-  function ribbon(cx, cy, ang, len, wid, k, stops, sheen){
-    const steps = 26, up = [], dn = [];
-    const dx0 = Math.cos(ang), dy0 = Math.sin(ang);
-    const px = -Math.sin(ang), py = Math.cos(ang);
+  /* одна прядь: гладкая квадратичная кривая с градиентом вдоль и мягким затуханием */
+  function strand(fx, fy, sd){
+    const pal = P();
+    const A = ARMS[sd.ai];
     const m = Math.min(W, H);
-    for (let q = 0; q <= steps; q++){
-      const sc = q / steps, tt = sc * len;
-      const bend = Math.sin(sc * Math.PI) * k * wid * 0.5;
-      const x = cx + (dx0 * tt - px * bend) * m;
-      const y = cy + (dy0 * tt - py * bend) * m;
-      const prof = Math.pow(Math.sin(Math.min(1, sc * 1.12) * Math.PI * 0.8), 0.75);
-      const half = wid * m * 0.5 * prof;
-      up.push([x + px * half, y + py * half]);
-      dn.push([x - px * half, y - py * half]);
-    }
-    const m1 = up[13], m2 = dn[13];
-    const grad = ctx.createLinearGradient(m1[0], m1[1], m2[0], m2[1]);
-    for (let q = 0; q < stops.length; q++){
-      const [hx, al] = stops[q];
-      let off = q / (stops.length - 1);
-      if (sheen) off = Math.min(1, Math.max(0, off + Math.sin(t * 0.4 + q) * 0.035 * sheen));
-      const [r, g2, b] = hex2rgb(hx);
-      grad.addColorStop(off, `rgba(${r},${g2},${b},${al})`);
-    }
-    ctx.save();
-    if (P().glow){ ctx.shadowBlur = P().glow; ctx.shadowColor = 'rgba(126,140,255,.45)'; }
-    ctx.beginPath();
-    ctx.moveTo(up[0][0], up[0][1]);
-    for (let q = 1; q < up.length; q++) ctx.lineTo(up[q][0], up[q][1]);
-    for (let q = dn.length - 1; q >= 0; q--) ctx.lineTo(dn[q][0], dn[q][1]);
-    ctx.closePath();
-    ctx.fillStyle = grad;
-    ctx.fill();
-    ctx.restore();
-  }
-
-  /* кристаллический клин: острая удлинённая капля, градиент вдоль */
-  function shard(fx, fy, ang, len, wid, stops){
-    const m = Math.min(W, H);
+    const wob = reduceMotion ? 0 : 1;
+    const ang = A.a + Math.sin(t * 0.08 + A.ph + sd.ph) * 0.06 * wob + sd.da;
+    const len = A.L * sd.dl * (1 + Math.sin(t * 0.06 + A.ph + sd.ph2) * 0.05 * wob) * m;
+    const tipAng = ang + Math.sin(t * 0.07 + sd.ph2) * 0.09 * wob;
     const dx = Math.cos(ang), dy = Math.sin(ang);
     const px = -dy, py = dx;
-    const bend = Math.sin(t * 0.11 + ang * 2.3) * 0.035;
-    const tipx = fx + (dx + px * bend * 3) * len * m, tipy = fy + (dy + py * bend * 3) * len * m;
-    const midx = fx + dx * len * m * 0.42 + px * wid * m * 0.5, midy = fy + dy * len * m * 0.42 + py * wid * m * 0.5;
-    const mid2x = fx + dx * len * m * 0.30 - px * wid * m * 0.32, mid2y = fy + dy * len * m * 0.30 - py * wid * m * 0.32;
-    const bx = fx + Math.cos(ang + 0.6) * m * 0.012, by = fy + Math.sin(ang + 0.6) * m * 0.012;
+    /* контрольная точка задаёт плавный изгиб пучка */
+    const bend = A.k * sd.dw * m * 0.14 * Math.sin(t * 0.05 + sd.ph2);
+    const c1x = fx + dx * len * 0.44 + px * bend;
+    const c1y = fy + dy * len * 0.44 + py * bend;
+    const tipx = fx + Math.cos(tipAng) * len;
+    const tipy = fy + Math.sin(tipAng) * len;
+    /* цвет пряди */
+    let hx, al;
+    if (sd.kind === 'main'){ hx = pal.main[sd.ci % pal.main.length]; al = pal.mainA; }
+    else if (sd.kind === 'ink'){ hx = pal.ink[sd.ci % pal.ink.length]; al = pal.inkA; }
+    else { hx = pal.accent[sd.ci % pal.accent.length]; al = pal.accA; }
+    const [r, g2, b] = hex2rgb(hx);
     const grad = ctx.createLinearGradient(fx, fy, tipx, tipy);
-    for (let q = 0; q < stops.length; q++){
-      const [hx, al] = stops[q];
-      const off = q / (stops.length - 1);
-      const [r, g2, b] = hex2rgb(hx);
-      grad.addColorStop(off, `rgba(${r},${g2},${b},${al})`);
-    }
+    grad.addColorStop(0, `rgba(${r},${g2},${b},${al})`);
+    grad.addColorStop(0.55, `rgba(${r},${g2},${b},${(al * 0.45).toFixed(3)})`);
+    grad.addColorStop(1, `rgba(${r},${g2},${b},0)`);
     ctx.save();
-    if (P().glow){ ctx.shadowBlur = P().glow; ctx.shadowColor = 'rgba(150,160,255,.5)'; }
+    if (pal.glowEvery && sd.ci % pal.glowEvery === 0){
+      ctx.shadowBlur = pal.glowBlur;
+      ctx.shadowColor = `rgba(${r},${g2},${b},.55)`;
+    }
+    ctx.strokeStyle = grad;
+    ctx.lineCap = 'round';
+    ctx.lineWidth = (sd.kind === 'ink' ? 1.1 : 0.8) + sd.dw * (sd.kind === 'accent' ? 1.6 : 3.1);
     ctx.beginPath();
-    ctx.moveTo(bx, by);
-    ctx.quadraticCurveTo(midx, midy, tipx, tipy);
-    ctx.quadraticCurveTo(mid2x, mid2y, bx, by);
-    ctx.closePath();
-    ctx.fillStyle = grad;
-    ctx.fill();
+    ctx.moveTo(fx, fy);
+    ctx.quadraticCurveTo(c1x, c1y, tipx, tipy);
+    ctx.stroke();
     ctx.restore();
   }
 
+  /* насыщенный HUD: живая статистика + графические метки */
+  const PLUSES = [[.68, .22], [.965, .58], [.76, .74], [.94, .16], [.64, .52]];
+  function plus(x, y, sz, pal){
+    ctx.strokeStyle = pal.hud;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x - sz, y); ctx.lineTo(x + sz, y);
+    ctx.moveTo(x, y - sz); ctx.lineTo(x, y + sz);
+    ctx.stroke();
+  }
   function drawHud(fx, fy){
     const pal = P();
+    const m = Math.min(W, H);
     ctx.save();
     ctx.fillStyle = pal.hud;
     ctx.strokeStyle = pal.hudLine;
     ctx.lineWidth = 1;
-    ctx.font = '600 9px system-ui, sans-serif';
     const wob = reduceMotion ? 0 : 1;
-    /* блок надписей у якоря */
-    const bx = fx - Math.min(W, H) * 0.30, by = fy + Math.min(W, H) * 0.16;
-    ctx.fillText('ABSTRACT — 02', bx, by);
-    ctx.fillText(wob ? ('FLOW / STUDY · ' + (0.86 + Math.sin(t * 0.2) * 0.02).toFixed(3)) : 'FLOW / STUDY · 0.860', bx, by + 13);
-    ctx.beginPath(); ctx.moveTo(bx, by + 20); ctx.lineTo(bx + 86, by + 20); ctx.stroke();
-    ctx.fillText('№ 047', bx, by + 33);
-    /* уголки-скобки вокруг очага */
-    const br = Math.min(W, H) * 0.19;
-    const cs = 12;
+
+    /* --- уголки-скобки вокруг очага --- */
+    ctx.strokeStyle = pal.hudLine;
+    const br = m * 0.19, cs = 12;
     [[-1,-1],[1,-1],[1,1],[-1,1]].forEach(([sx, sy]) => {
       const x = fx + sx * br, y = fy + sy * br;
       ctx.beginPath();
       ctx.moveTo(x + sx * cs, y); ctx.lineTo(x, y); ctx.lineTo(x, y + sy * cs);
       ctx.stroke();
     });
-    /* мини-линейка справа снизу */
-    const rx = fx + Math.min(W, H) * 0.10, ry = fy + Math.min(W, H) * 0.30;
+    /* --- плюсики-метки вокруг композиции --- */
+    for (const [px2, py2] of PLUSES) plus(px2 * W, py2 * H, 3.5, pal);
+    /* --- линейка --- */
+    const rx = fx + m * 0.10, ry = fy + m * 0.30;
     for (let q = 0; q <= 5; q++){
       const x = rx + q * 9;
       ctx.beginPath(); ctx.moveTo(x, ry); ctx.lineTo(x, ry + (q % 5 === 0 ? 8 : 4)); ctx.stroke();
     }
+    /* --- вертикальная надпись у правого края --- */
+    ctx.save();
+    ctx.translate(W - 10, H * 0.80);
+    ctx.rotate(-Math.PI / 2);
+    ctx.fillText('SILK — CHROME / LIVE — 02', 0, 0);
+    ctx.restore();
+    ctx.restore();
+  }
+  /* еле заметные водяные знаки на левой половине (поверх вуали) */
+  function drawLeftMarks(){
+    const pal = P();
+    ctx.save();
+    ctx.globalAlpha = 0.5;
+    plus(W * 0.09, H * 0.20, 4, pal);
+    ctx.strokeStyle = pal.hudLine;
+    ctx.beginPath();
+    ctx.moveTo(W * 0.05 * 0.9, H * 0.58 - 4); ctx.lineTo(W * 0.05 * 0.9 + 8, H * 0.58 + 4);
+    ctx.moveTo(W * 0.05 * 0.9 + 8, H * 0.58 - 4); ctx.lineTo(W * 0.05 * 0.9, H * 0.58 + 4);
+    ctx.stroke();
+    ctx.fillStyle = pal.hud;
+    ctx.font = '600 8px system-ui, sans-serif';
+    ctx.fillText('SYS/001 — OK', W * 0.07, H * 0.84);
+    ctx.strokeStyle = pal.hudLine;
+    ctx.beginPath(); ctx.moveTo(W * 0.07, H * 0.84 + 5); ctx.lineTo(W * 0.07 + 46, H * 0.84 + 5); ctx.stroke();
     ctx.restore();
   }
 
@@ -1365,41 +1377,29 @@ const BGFX = (() => {
       ctx.fillStyle = vg;
       ctx.fillRect(0, 0, W, H);
     }
-    /* свечение очага */
+    /* мягкое свечение устья пучков */
     const core = ctx.createRadialGradient(fx, fy, 0, fx, fy, R * 0.10);
-    core.addColorStop(0, pal.core[0]);
-    core.addColorStop(1, pal.core[1]);
+    core.addColorStop(0, dark ? 'rgba(235,240,255,.85)' : 'rgba(255,255,255,.9)');
+    core.addColorStop(0.5, dark ? 'rgba(126,140,255,.35)' : 'rgba(198,205,215,.5)');
+    core.addColorStop(1, 'rgba(0,0,0,0)');
     ctx.fillStyle = core;
     ctx.fillRect(fx - R * 0.11, fy - R * 0.11, R * 0.22, R * 0.22);
-    /* контурные дуги (светлая тема) */
-    if (!dark){
-      ctx.strokeStyle = pal.contour;
-      ctx.lineWidth = 1;
-      for (const c of CONTOURS){
-        const rot = Math.sin(t * 0.06 + c.ph) * 0.06 * wob;
-        ctx.beginPath();
-        ctx.ellipse(fx, fy, c.rx * W, c.ry * H, rot, c.a0, c.a1);
-        ctx.stroke();
-      }
+    /* контурные дуги */
+    ctx.strokeStyle = pal.hudLine;
+    ctx.lineWidth = 1;
+    for (const c of CONTOURS){
+      const rot = Math.sin(t * 0.05 + c.ph) * 0.05 * wob;
+      ctx.beginPath();
+      ctx.ellipse(fx, fy, c.rx * W, c.ry * H, rot, c.a0, c.a1);
+      ctx.stroke();
     }
-    /* главный арт: кристаллы (тёмная) или хром-ленты (светлая) */
-    for (const A of ARMS){
-      const ang = A.a + Math.sin(t * 0.09 + A.ph) * 0.045 * wob;
-      const len = A.L * (1 + Math.sin(t * 0.07 + A.ph * 1.3) * 0.045 * wob);
-      const wid = A.w * (1 + Math.cos(t * 0.08 + A.ph) * 0.07 * wob);
-      const k = A.k * (1 + Math.sin(t * 0.06 + A.ph * 2) * 0.10 * wob);
-      if (dark){
-        const stops = A.kind === 'accent' ? pal.accentShard : pal.shardStops;
-        shard(fx, fy, ang, len, wid * 1.6, stops);
-      } else if (A.kind === 'accent'){
-        ribbon(fx, fy, ang, len, wid * 0.5, k, [[pal.accent[0],.85],[pal.accent[1],.8]], 0);
-      } else {
-        ribbon(fx, fy, ang, len, wid, k, A.kind === 'ink' ? pal.inkStops : pal.chromeStops, wob);
-      }
-    }
+    /* шёлковый пучок прядей (в тёмной — с накоплением свечения) */
+    ctx.globalCompositeOperation = pal.lighter ? 'lighter' : 'source-over';
+    for (const sd of strands) strand(fx, fy, sd);
+    ctx.globalCompositeOperation = 'source-over';
     /* HUD-детали */
     drawHud(fx, fy);
-    /* вуаль слева для читаемости списка */
+    /* вуаль слева — читаемость списка */
     const veil = ctx.createLinearGradient(0, 0, W * 0.60, 0);
     veil.addColorStop(0, `rgba(${pal.veil},.94)`);
     veil.addColorStop(0.5, `rgba(${pal.veil},.6)`);
@@ -1408,43 +1408,43 @@ const BGFX = (() => {
     ctx.fillRect(0, 0, W * 0.60, H);
     /* сетка поверх */
     ctx.drawImage(bgGrid, 0, 0, W, H);
-    /* летящий мусор-осколки */
-    for (const db of debris){
+    /* водяные знаки слева */
+    drawLeftMarks();
+    /* дрейфующие волокна-волоски */
+    ctx.lineCap = 'round';
+    for (const hb of hairs){
       if (!reduceMotion){
-        db.x += db.vx * dt; db.y += db.vy * dt; db.rot += db.vr * dt;
-        db.x += Math.sin(t * 0.5 + db.ph) * 0.2;
-        if (db.x < -20) db.x = W + 20; else if (db.x > W + 20) db.x = -20;
-        if (db.y < -20) db.y = H + 20; else if (db.y > H + 20) db.y = -20;
+        hb.x += hb.vx * dt; hb.y += hb.vy * dt; hb.ang += hb.va * dt;
+        hb.x += Math.sin(t * 0.5 + hb.ph) * 0.2;
+        if (hb.x < -30) hb.x = W + 30; else if (hb.x > W + 30) hb.x = -30;
+        if (hb.y < -30) hb.y = H + 30; else if (hb.y > H + 30) hb.y = -30;
       }
-      ctx.save();
-      ctx.translate(db.x, db.y); ctx.rotate(db.rot);
-      ctx.fillStyle = db.red ? pal.debrisRed : pal.debris;
+      const al = 0.35 + 0.3 * Math.sin(t * 1.1 + hb.ph);
+      ctx.strokeStyle = hb.red ? pal.hairRed : pal.hair;
+      ctx.globalAlpha = Math.max(0, al);
+      ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.moveTo(-db.s / 2, 0); ctx.lineTo(0, -db.s / 4); ctx.lineTo(db.s / 2, 0); ctx.lineTo(0, db.s / 4);
-      ctx.closePath();
-      ctx.fill();
-      ctx.restore();
+      ctx.moveTo(hb.x, hb.y);
+      ctx.lineTo(hb.x + Math.cos(hb.ang) * hb.len, hb.y + Math.sin(hb.ang) * hb.len);
+      ctx.stroke();
     }
-    /* глитч-вспышка */
+    ctx.globalAlpha = 1;
+    /* мягкий глитч: редкий и деликатный */
     if (!reduceMotion){
       if (kickT < 0 && t > nextKick){ kickT = 0; }
       if (kickT >= 0){
         kickT += dt;
-        const dur = 0.20;
+        const dur = 0.16;
         if (kickT < dur){
-          const n = 3 + (Math.random() * 3 | 0);
+          const n = 2 + (Math.random() * 3 | 0);
           for (let q = 0; q < n; q++){
-            const sy = Math.random() * H, sh = 6 + Math.random() * 24;
-            const off = (Math.random() - .5) * 36;
+            const sy = Math.random() * H, sh = 5 + Math.random() * 18;
+            const off = (Math.random() - .5) * 22;
             ctx.drawImage(cv, 0, sy * (cv.height / H), cv.width, sh * (cv.height / H), off, sy, W, sh);
           }
-          ctx.fillStyle = dark ? 'rgba(126,140,255,.4)' : 'rgba(27,79,168,.3)';
-          ctx.fillRect(0, Math.random() * H, W, 1);
-          ctx.fillStyle = dark ? 'rgba(255,77,107,.35)' : 'rgba(255,59,82,.28)';
-          ctx.fillRect(0, Math.random() * H, W, 1.5);
         } else {
           kickT = -1;
-          nextKick = t + 2.8 + Math.random() * 4;
+          nextKick = t + 4 + Math.random() * 5;
         }
       }
     }
@@ -1487,5 +1487,5 @@ load();
 applyTheme(document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light');
 render();
 </script>
-<script>(function(){function c(){var b=a.contentDocument||(a.contentWindow&&a.contentWindow.document);if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a47a5d51790ccce9',t:'MTc5MTUxNzIzMg=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+<script>(function(){function c(){var b=a.contentDocument||(a.contentWindow&&a.contentWindow.document);if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a47a76c79ae6e77f',t:'MTc5MTUxODI3NQ=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
 </html>
