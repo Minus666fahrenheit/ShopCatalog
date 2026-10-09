@@ -1170,7 +1170,7 @@ $('#wipeBtn').addEventListener('click', async () => {
   if (ok){ state = { categories: [], items: [] }; save(); render(); }
 });
 
-/* ================= анимированный фон: хром-глитч композиция ================= */
+/* ================= анимированный фон: «хром-поток» справа ================= */
 const BGFX = (() => {
   const cv = document.getElementById('bgfx');
   if (!cv) return { setTheme(){} };
@@ -1178,42 +1178,38 @@ const BGFX = (() => {
   if (!ctx) return { setTheme(){} }; /* нет canvas-движка — просто пропускаем */
   const reduceMotion = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
   let W = 0, H = 0, raf = null, running = false, lastTs = 0, t = 0, dark = false;
-  let grid = null, streams = [], petals = [], frags = [];
+  let grid = null, streams = [], petals = [], frags = [], streaks = [];
   let nextKick = 3, kickT = -1;
 
-  /* палитры */
+  /* палитры: инверсия настроения */
   const P = () => dark ? {
-    dots: 'rgba(226,232,255,.11)',
-    chrome: [[242,251,255], [126,224,255], [47,107,255], [10,16,48]],
+    dots: 'rgba(226,232,255,.10)', veil: '7,7,8',
+    chrome: [[240,250,255], [126,224,255], [47,107,255], [8,12,40]],
     ink:    [[255,255,255], [159,216,255], [27,61,143]],
     accent: [[255,225,230], [255,77,107], [179,18,60]],
-    petal:  'rgba(223,233,255,.85)',
-    frag:   'rgba(226,232,255,.5)',
-    stream: 'rgba(159,216,255,.28)',
-    glow:   14
+    petal:  'rgba(223,233,255,.85)', frag: 'rgba(226,232,255,.5)',
+    stream: 'rgba(159,216,255,.30)', glow: 14
   } : {
-    dots: 'rgba(17,24,39,.10)',
-    chrome: [[232,247,255], [111,214,242], [27,79,168], [11,18,48]],
-    ink:    [[58,67,86], [16,20,29], [5,7,12]],
-    accent: [[255,215,221], [255,59,82], [193,28,63]],
-    petal:  'rgba(13,21,34,.85)',
-    frag:   'rgba(16,20,29,.45)',
-    stream: 'rgba(27,79,168,.22)',
-    glow:   0
+    dots: 'rgba(17,24,39,.09)', veil: '244,246,249',
+    chrome: [[236,248,255], [111,214,242], [27,79,168], [10,16,44]],
+    ink:    [[52,60,78], [14,18,26], [3,5,9]],
+    accent: [[255,214,220], [255,59,82], [186,24,58]],
+    petal:  'rgba(13,21,34,.85)', frag: 'rgba(16,20,29,.45)',
+    stream: 'rgba(27,79,168,.22)', glow: 0
   };
 
-  /* конфигурация мазков: угол, длина, ширина, изгиб, тип */
+  /* кольца-полумесяцы вокруг очага: радиусы, растворы, тип */
+  const ARCS = [
+    { r0: .30, r1: .47, a0: 1.75, a1: 4.35, ph: 0.0, kind: 'chrome' },
+    { r0: .52, r1: .62, a0: 2.85, a1: 5.15, ph: 1.8, kind: 'chrome' },
+    { r0: .66, r1: .71, a0: 2.30, a1: 4.10, ph: 3.2, kind: 'ink'    },
+    { r0: .22, r1: .26, a0: 3.55, a1: 5.60, ph: 0.9, kind: 'accent' }
+  ];
+  /* чернильные мазки-ленты от очага */
   const RIBBONS = [
-    { a: -0.42, L: 1.05, w: .30, k:  2.4, kind: 'chrome', ph: 0.0 },
-    { a:  0.30, L: 0.98, w: .24, k: -1.9, kind: 'chrome', ph: 1.7 },
-    { a:  2.55, L: 0.92, w: .22, k:  1.6, kind: 'chrome', ph: 3.1 },
-    { a: -2.20, L: 0.88, w: .19, k: -2.8, kind: 'chrome', ph: 4.4 },
-    { a:  0.05, L: 1.12, w: .16, k:  1.1, kind: 'ink',    ph: 0.8 },
-    { a: -0.75, L: 0.80, w: .12, k:  3.1, kind: 'ink',    ph: 2.5 },
-    { a:  1.85, L: 0.74, w: .10, k: -2.2, kind: 'ink',    ph: 5.2 },
-    { a: -0.28, L: 0.66, w: .05, k:  1.4, kind: 'accent', ph: 0.4 },
-    { a:  0.62, L: 0.60, w: .045,k: -2.6, kind: 'accent', ph: 2.9 },
-    { a:  2.90, L: 0.56, w: .04, k:  2.0, kind: 'accent', ph: 4.8 }
+    { a: 0.85, L: .52, w: .09, k: 2.1,  ph: 0.6, kind: 'ink' },
+    { a: -0.50, L: .44, w: .06, k: -2.4, ph: 2.2, kind: 'ink' },
+    { a: 2.20, L: .60, w: .05, k: 1.6,  ph: 4.1, kind: 'accent' }
   ];
 
   function resize(){
@@ -1221,7 +1217,7 @@ const BGFX = (() => {
     const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
     cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    /* точечная сетка — на офскрине, перерисовывается только при ресайзе */
+    /* точечная сетка — офскрин, перерисовывается только при ресайзе */
     const gap = dark ? 34 : 30;
     grid = document.createElement('canvas');
     grid.width = cv.width; grid.height = cv.height;
@@ -1232,61 +1228,82 @@ const BGFX = (() => {
       for (let x = gap; x < W; x += gap){
         g.beginPath(); g.arc(x, y, 1.05, 0, Math.PI * 2); g.fill();
       }
-    /* «дата-потоки»: кластеры тонких чёрточек */
-    streams = Array.from({ length: 10 }, () => ({
-      x: Math.random() * W, y: Math.random() * H,
-      n: 3 + (Math.random() * 4 | 0),
-      w: 14 + Math.random() * 40,
-      seed: Math.random() * 10
+    /* скоростные линии: веер влево от очага + пара коротких вправо */
+    streaks = Array.from({ length: 16 }, (_, q) => ({
+      ang: Math.PI - 1.05 + q * (2.1 / 15) + (Math.random() - .5) * .12,
+      len: .16 + Math.random() * .42,
+      w: 1.5 + Math.random() * 5,
+      ph: Math.random() * 10,
+      side: 1
     }));
-    /* лепестки */
-    petals = Array.from({ length: 8 }, () => ({
-      x: Math.random() * W, y: Math.random() * H,
+    streaks.push({ ang: -0.42, len: .12, w: 2.5, ph: 2.0, side: -1 });
+    streaks.push({ ang: 0.50,  len: .10, w: 2.0, ph: 4.4, side: -1 });
+    /* «дата-потоки» и лепестки — правая половина */
+    streams = Array.from({ length: 8 }, () => ({
+      x: W * (0.45 + Math.random() * 0.55), y: Math.random() * H,
+      n: 3 + (Math.random() * 4 | 0), w: 14 + Math.random() * 40, seed: Math.random() * 10
+    }));
+    petals = Array.from({ length: 6 }, () => ({
+      x: W * (0.55 + Math.random() * 0.45), y: Math.random() * H,
       vx: (Math.random() - .5) * 14, vy: (Math.random() - .5) * 14,
       s: 7 + Math.random() * 9, rot: Math.random() * Math.PI, vr: (Math.random() - .5) * 0.8,
       ph: Math.random() * 10
     }));
-    /* осколки-прямоугольники у центра */
-    frags = Array.from({ length: 9 }, () => {
-      const a = Math.random() * Math.PI * 2, rr = 0.10 + Math.random() * 0.28;
+    /* осколки у очага */
+    const fx = W * 0.88, fy = H * 0.44;
+    frags = Array.from({ length: 8 }, () => {
+      const a = Math.random() * Math.PI * 2, rr = 0.05 + Math.random() * 0.16;
       return {
-        x: W / 2 + Math.cos(a) * rr * W, y: H / 2 + Math.sin(a) * rr * H,
-        w: 8 + Math.random() * 26, h: 3 + Math.random() * 6,
+        x: fx + Math.cos(a) * rr * W, y: fy + Math.sin(a) * rr * H,
+        w: 8 + Math.random() * 24, h: 3 + Math.random() * 5,
         a: Math.random() * Math.PI, red: Math.random() < .3
       };
     });
   }
 
-  /* лента-мазок: сэмплы кривой + офсеты по нормали, градиент поперёк */
+  /* кольцо-полумесяц с радиальным хром-градиентом */
+  function crescent(fx, fy, R0, R1, a0, a1, cols, glow){
+    const grad = ctx.createRadialGradient(fx, fy, R0, fx, fy, R1);
+    grad.addColorStop(0,   `rgba(${cols[1]},${dark ? .75 : .65})`);
+    grad.addColorStop(0.45,`rgba(${cols[2]},${dark ? .85 : .8})`);
+    grad.addColorStop(1,   `rgba(${cols[3] || cols[2]},${dark ? .9 : .95})`);
+    ctx.save();
+    if (glow){ ctx.shadowBlur = glow; ctx.shadowColor = `rgba(${cols[1]},.5)`; }
+    ctx.beginPath();
+    ctx.arc(fx, fy, R1, a0, a1);
+    ctx.arc(fx, fy, R0, a1, a0, true);
+    ctx.closePath();
+    ctx.fillStyle = grad;
+    ctx.fill();
+    ctx.restore();
+  }
+
+  /* лента-мазок с изгибом (для чернил и акцентов) */
   function ribbon(cx, cy, ang, len, wid, k, cols, glow){
-    const steps = 26, up = [], dn = [];
+    const steps = 24, up = [], dn = [];
     const dx0 = Math.cos(ang), dy0 = Math.sin(ang);
     const px = -Math.sin(ang), py = Math.cos(ang);
-    for (let i = 0; i <= steps; i++){
-      const s = i / steps;
-      const tt = s * len;
-      /* кривая с изгибом k */
-      const bend = Math.sin(s * Math.PI) * k * wid * 0.55;
+    for (let m = 0; m <= steps; m++){
+      const sc = m / steps, tt = sc * len;
+      const bend = Math.sin(sc * Math.PI) * k * wid * 0.55;
       const x = cx + (dx0 * tt - px * bend) * Math.min(W, H);
       const y = cy + (dy0 * tt - py * bend) * Math.min(W, H);
-      /* профиль ширины: тонко у центра, максимум на 55%, сужение к концу */
-      const prof = Math.pow(Math.sin(Math.min(1, s * 1.15) * Math.PI * 0.82), 0.8);
+      const prof = Math.pow(Math.sin(Math.min(1, sc * 1.15) * Math.PI * 0.82), 0.8);
       const half = wid * Math.min(W, H) * 0.5 * prof;
       up.push([x + px * half, y + py * half]);
       dn.push([x - px * half, y - py * half]);
     }
-    const mid = up[13], mid2 = dn[13];
-    const grad = ctx.createLinearGradient(mid[0], mid[1], mid2[0], mid2[1]);
+    const m1 = up[12], m2 = dn[12];
+    const grad = ctx.createLinearGradient(m1[0], m1[1], m2[0], m2[1]);
     grad.addColorStop(0,   `rgba(${cols[0]},${dark ? .95 : .9})`);
     grad.addColorStop(0.4, `rgba(${cols[1]},${dark ? .9 : .85})`);
-    grad.addColorStop(0.75,`rgba(${cols[2]},${dark ? .8 : .8})`);
-    grad.addColorStop(1,   `rgba(${cols[3] || cols[2]},${dark ? .9 : .95})`);
+    grad.addColorStop(1,   `rgba(${cols[2]},${dark ? .8 : .8})`);
     ctx.save();
-    if (glow){ ctx.shadowBlur = glow; ctx.shadowColor = `rgba(${cols[1]},.55)`; }
+    if (glow){ ctx.shadowBlur = glow; ctx.shadowColor = `rgba(${cols[1]},.5)`; }
     ctx.beginPath();
     ctx.moveTo(up[0][0], up[0][1]);
-    for (let i = 1; i < up.length; i++) ctx.lineTo(up[i][0], up[i][1]);
-    for (let i = dn.length - 1; i >= 0; i--) ctx.lineTo(dn[i][0], dn[i][1]);
+    for (let m = 1; m < up.length; m++) ctx.lineTo(up[m][0], up[m][1]);
+    for (let m = dn.length - 1; m >= 0; m--) ctx.lineTo(dn[m][0], dn[m][1]);
     ctx.closePath();
     ctx.fillStyle = grad;
     ctx.fill();
@@ -1310,26 +1327,64 @@ const BGFX = (() => {
   function draw(dt){
     const pal = P();
     const R = Math.max(W, H);
+    const fx = W * 0.88, fy = H * 0.44; /* очаг композиции у правого края */
+    const wob = reduceMotion ? 0 : 1;
     ctx.clearRect(0, 0, W, H);
-    /* дышащие мазки из центра */
-    const cx = W * 0.5, cy = H * 0.52;
-    for (const rb of RIBBONS){
-      const wob = reduceMotion ? 0 : 1;
-      const ang = rb.a + Math.sin(t * 0.13 + rb.ph) * 0.05 * wob;
-      const len = rb.L * (1 + Math.sin(t * 0.09 + rb.ph * 1.3) * 0.04 * wob);
-      const wid = rb.w * (1 + Math.cos(t * 0.11 + rb.ph) * 0.06 * wob);
-      const k = rb.k * (1 + Math.sin(t * 0.07 + rb.ph * 2) * 0.12 * wob);
-      const cols = rb.kind === 'chrome' ? pal.chrome : rb.kind === 'ink' ? pal.ink : pal.accent;
-      ribbon(cx, cy, ang, len, wid, k, cols, pal.glow);
-      /* эхо-мазок для эффекта движения */
-      ctx.save();
-      ctx.globalAlpha = 0.22;
-      ribbon(cx, cy, ang + 0.045, len * 0.94, wid * 0.5, k * 1.15, cols, 0);
-      ctx.restore();
+    /* свечение очага */
+    const core = ctx.createRadialGradient(fx, fy, 0, fx, fy, R * 0.11);
+    core.addColorStop(0, dark ? 'rgba(240,250,255,.9)' : 'rgba(10,14,26,.75)');
+    core.addColorStop(0.4, dark ? 'rgba(47,107,255,.4)' : 'rgba(27,79,168,.3)');
+    core.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = core;
+    ctx.fillRect(fx - R * 0.12, fy - R * 0.12, R * 0.24, R * 0.24);
+    /* кольца-полумесяцы, медленно дышат и вращаются */
+    for (const A of ARCS){
+      const cols = A.kind === 'chrome' ? pal.chrome : A.kind === 'ink' ? pal.ink : pal.accent;
+      const rot = Math.sin(t * 0.05 + A.ph) * 0.08 * wob;
+      const r0 = A.r0 * R * (1 + Math.sin(t * 0.07 + A.ph) * 0.03 * wob);
+      const r1 = A.r1 * R * (1 + Math.cos(t * 0.06 + A.ph) * 0.03 * wob);
+      crescent(fx, fy, r0, r1, A.a0 + rot, A.a1 + rot, cols, pal.glow);
     }
-    /* точечная сетка поверх — как в референсе точки сидят НА арте */
+    /* скоростные линии — клинья от очага, растворяются к концу */
+    const TAU = Math.PI * 2;
+    for (const st of streaks){
+      const ang = st.ang + Math.sin(t * 0.2 + st.ph) * 0.05 * wob;
+      const len = st.len * R * (1 + Math.sin(t * 0.13 + st.ph * 1.4) * 0.10 * wob);
+      const puls = 0.55 + 0.45 * Math.sin(t * 0.9 + st.ph);
+      const bx = fx + Math.cos(ang) * R * 0.015, by = fy + Math.sin(ang) * R * 0.015;
+      const tx = fx + Math.cos(ang) * len, ty = fy + Math.sin(ang) * len;
+      const px = -Math.sin(ang), py = Math.cos(ang);
+      const al = (dark ? 0.30 : 0.26) * puls;
+      const grad = ctx.createLinearGradient(bx, by, tx, ty);
+      grad.addColorStop(0, `rgba(${pal.chrome[2]},${al.toFixed(3)})`);
+      grad.addColorStop(1, `rgba(${pal.chrome[2]},0)`);
+      ctx.beginPath();
+      ctx.moveTo(bx + px * st.w, by + py * st.w);
+      ctx.lineTo(bx - px * st.w, by - py * st.w);
+      ctx.lineTo(tx, ty);
+      ctx.closePath();
+      ctx.fillStyle = grad;
+      ctx.fill();
+    }
+    /* чернильные мазки и красные штрихи от очага */
+    for (const rb of RIBBONS){
+      const cols = rb.kind === 'ink' ? pal.ink : pal.accent;
+      ribbon(fx, fy,
+        rb.a + Math.sin(t * 0.11 + rb.ph) * 0.04 * wob,
+        rb.L * (1 + Math.sin(t * 0.08 + rb.ph) * 0.05 * wob),
+        rb.w, rb.k * (1 + Math.sin(t * 0.07 + rb.ph * 2) * 0.1 * wob),
+        cols, pal.glow);
+    }
+    /* вуаль слева: контент остаётся читаемым */
+    const veil = ctx.createLinearGradient(0, 0, W * 0.62, 0);
+    veil.addColorStop(0, `rgba(${pal.veil},.92)`);
+    veil.addColorStop(0.45, `rgba(${pal.veil},.55)`);
+    veil.addColorStop(1, `rgba(${pal.veil},0)`);
+    ctx.fillStyle = veil;
+    ctx.fillRect(0, 0, W * 0.62, H);
+    /* точечная сетка поверх — как в референсе */
     ctx.drawImage(grid, 0, 0, W, H);
-    /* дата-потоки (мерцающие чёрточки) */
+    /* дата-потоки */
     ctx.fillStyle = pal.stream;
     for (const st of streams){
       const fl = 0.65 + 0.35 * Math.sin(t * 2.2 + st.seed * 3);
@@ -1364,7 +1419,7 @@ const BGFX = (() => {
           const n = 3 + (Math.random() * 3 | 0);
           for (let q = 0; q < n; q++){
             const sy = Math.random() * H, sh = 6 + Math.random() * 26;
-            const off = (Math.random() - .5) * 46;
+            const off = (Math.random() - .5) * 36;
             ctx.drawImage(cv, 0, sy * (cv.height / H), cv.width, sh * (cv.height / H), off, sy, W, sh);
           }
           ctx.fillStyle = dark ? 'rgba(255,77,107,.35)' : 'rgba(255,59,82,.3)';
@@ -1416,5 +1471,5 @@ load();
 applyTheme(document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light');
 render();
 </script>
-<script>(function(){function c(){var b=a.contentDocument||(a.contentWindow&&a.contentWindow.document);if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a47a4b2f3eb7afd2',t:'MTc5MTUxNjQ5MA=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+<script>(function(){function c(){var b=a.contentDocument||(a.contentWindow&&a.contentWindow.document);if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a47a4fb8de9d3506',t:'MTc5MTUxNjY3NQ=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
 </html>
