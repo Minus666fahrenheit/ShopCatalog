@@ -51,9 +51,8 @@ button{font-family:inherit}
 b,strong{font-weight:600}
 .num{font-variant-numeric:tabular-nums}
 /* ============ шапка ============ */
-.top{display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin:6px 0 18px}
-.top h1{margin:0; font-size:23px; letter-spacing:-.3px}
-.top .sub{margin:2px 0 0; color:var(--muted); font-size:13px}
+.top{display:flex; align-items:center; justify-content:space-between; gap:12px; margin:6px 0 18px}
+.top h1{margin:0; font-size:21px; font-weight:700; letter-spacing:-.3px}
 #themeBtn{
   width:38px;height:38px;border-radius:11px;border:1px solid var(--border);
   background:var(--card);cursor:pointer;font-size:17px;line-height:1;color:var(--text);
@@ -208,7 +207,7 @@ b,strong{font-weight:600}
   border-radius:10px; font-size:17px; cursor:pointer; flex-shrink:0; transition:all .15s}
 .plus-btn:hover{border-color:var(--accent); color:var(--accent)}
 /* ============ категории ============ */
-.cat{margin-bottom:14px; overflow:hidden}
+.cat{margin-bottom:14px; overflow:hidden; content-visibility:auto; contain-intrinsic-size:auto 140px}
 .cat-head{display:flex; align-items:center; gap:10px; padding:13px 12px 13px 18px}
 .cat-head .dot{width:10px; height:10px; border-radius:50%; background:var(--c,var(--accent)); flex-shrink:0}
 .cat-head h2{margin:0; font-size:15.5px; font-weight:700; letter-spacing:-.1px; white-space:nowrap;
@@ -289,10 +288,7 @@ b,strong{font-weight:600}
 <div class="wrap">
 
   <header class="top">
-    <div>
-      <h1>🛍️ Список покупок</h1>
-      <p class="sub">Всё, что хочется купить — в одном месте. Данные хранятся в этом браузере.</p>
-    </div>
+    <h1>Список покупок</h1>
     <button id="themeBtn" title="Сменить тему" aria-label="Сменить тему">🌙</button>
   </header>
 
@@ -359,7 +355,7 @@ b,strong{font-weight:600}
     <button class="linkish" id="importBtn" type="button">Импорт из файла</button>
     <button class="linkish warn" id="wipeBtn" type="button">Очистить всё</button>
   </footer>
-  <input type="file" id="importFile" accept="application/json,.json" hidden>
+  <input type="file" id="importFile" accept=".json,application/json" multiple hidden>
 
   <!-- ======== плавающие заметки по категориям ======== -->
   <div class="card notes-panel" id="notesPanel" role="dialog" aria-label="Заметки по категориям" hidden>
@@ -467,10 +463,11 @@ function plural(n, forms){
   if (a >= 2 && a <= 4 && (b < 12 || b > 14)) return forms[1];
   return forms[2];
 }
-const oneLine = v => String(v || '').replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 300);
-const sanitizeNote = v => String(v || '').replace(/\r/g, '').replace(/\n{3,}/g, '\n\n').trim().slice(0, 500);
+const noAngles = v => String(v ?? '').replace(/</g, '\u2039').replace(/>/g, '\u203a');
+const oneLine = v => noAngles(String(v || '')).replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 300);
+const sanitizeNote = v => noAngles(String(v || '')).replace(/\r/g, '').replace(/\n{3,}/g, '\n\n').trim().slice(0, 500);
 function normalizeUrl(u){
-  u = (u || '').trim();
+  u = noAngles(u).trim();
   if (!u) return '';
   if (/^https?:\/\//i.test(u)) return u;
   if(/^[^\s]+\.[^\s]{2,}/.test(u)) return 'https://' + u; // "eva.ua/pr123" → https://…
@@ -487,7 +484,7 @@ let editingNoteId = null;      // какая заметка сейчас отк�
 let noteDraft = '';            // черновик редактируемой заметки
 const openNotes = new Set();   // развёрнутые заметки в секциях категорий
 
-function save(){ store.setItem(LS_KEY, JSON.stringify(state)); }
+function save(){ byCatCache = null; store.setItem(LS_KEY, JSON.stringify(state)); }
 function load(){
   try {
     const raw = store.getItem(LS_KEY);
@@ -496,6 +493,7 @@ function load(){
     state.categories = Array.isArray(d.categories) ? d.categories : [];
     state.items      = Array.isArray(d.items) ? d.items : [];
     state.categories.forEach((c,i) => { if(!c.color) c.color = PALETTE[i % PALETTE.length]; });
+    byCatCache = null;
   } catch(e){ /* повреждённые данные игнорируем */ }
 }
 
@@ -511,7 +509,22 @@ function perCurrency(list){
 const fmtSum  = x => nf.format(x.sum) + ' ' + SYM[x.cur];
 const fmtSums = arr => arr.map(fmtSum).join(' + ');
 const fmtPrice = it => it.price == null ? '—' : nf.format(it.price) + ' ' + SYM[it.currency];
-const itemsOf = catId => state.items.filter(i => i.categoryId === catId);
+/* группировка считается один раз на рендер (O(n) вместо O(n·k) на каждый вызов) */
+let byCatCache = null;
+const UNC = '__uncat__';
+function buildByCat(){
+  byCatCache = new Map();
+  for (const it of state.items){
+    const k = it.categoryId == null ? UNC : it.categoryId;
+    let arr = byCatCache.get(k);
+    if (!arr){ arr = []; byCatCache.set(k, arr); }
+    arr.push(it);
+  }
+}
+const itemsOf = catId => {
+  if (!byCatCache) buildByCat();
+  return byCatCache.get(catId == null ? UNC : catId) || [];
+};
 
 
 /* ================= кастомные дропдауны ================= */
@@ -866,7 +879,7 @@ $('#itemForm').addEventListener('submit', e => {
   e.preventDefault();
   const it = state.items.find(i => i.id === editId);
   if (!it) return;
-  const name = $('#mName').value.trim();
+  const name = noAngles($('#mName').value.trim());
   if (!name){ $('#mName').focus(); return; }
   const raw = $('#mPrice').value.trim();
   let price = raw === '' ? null : parseFloat(raw);
@@ -892,7 +905,7 @@ function openCatModal(mode){
 }
 $('#catForm').addEventListener('submit', e => {
   e.preventDefault();
-  const name = $('#cName').value.trim();
+  const name = noAngles($('#cName').value.trim());
   if (!name){ $('#cName').focus(); return; }
   if (catModalMode?.mode === 'rename'){
     const c = state.categories.find(c => c.id === catModalMode.id);
@@ -974,7 +987,14 @@ $('#notesList').addEventListener('click', e => {
   }
 });
 $('#notesList').addEventListener('input', e => {
-  if (e.target.matches('[data-np="ta"]')) noteDraft = e.target.value;
+  if (!e.target.matches('[data-np="ta"]')) return;
+  const v = e.target.value, nv = v.replace(/</g, '\u2039').replace(/>/g, '\u203a');
+  if (v !== nv){
+    const p = e.target.selectionStart;
+    e.target.value = nv;
+    try { e.target.setSelectionRange(p, p); } catch(_){}
+  }
+  noteDraft = e.target.value;
 });
 $('#notesList').addEventListener('keydown', e => {
   if (!e.target.matches('[data-np="ta"]')) return;
@@ -1024,6 +1044,7 @@ async function deleteCategory(id){
     kids.forEach(i => { i.categoryId = null; });
     state.categories = state.categories.filter(x => x.id !== id);
     openNotes.delete(id);
+    byCatCache = null;
     save(); render();
   }
 }
@@ -1061,6 +1082,18 @@ $('#categories').addEventListener('change', e => {
   save(); render();
 });
 
+/* ввод < и > запрещён: сразу заменяем на типографские ‹ › */
+document.addEventListener('input', e => {
+  const t = e.target;
+  if (!t.matches?.('#fName,#fDesc,#fUrl,#cName,#mName,#mDesc,#mUrl,textarea[data-np="ta"]')) return;
+  const v = t.value, nv = v.replace(/</g, '\u2039').replace(/>/g, '\u203a');
+  if (v !== nv){
+    const p = t.selectionStart;
+    t.value = nv;
+    try { t.setSelectionRange(p, p); } catch(_){}
+  }
+});
+
 /* ================= форма добавления ================= */
 $('#descToggle').addEventListener('click', () => {
   const f = $('#fDesc');
@@ -1071,7 +1104,7 @@ $('#descToggle').addEventListener('click', () => {
 
 $('#addForm').addEventListener('submit', e => {
   e.preventDefault();
-  const name = $('#fName').value.trim();
+  const name = noAngles($('#fName').value.trim());
   if (!name){ $('#fName').focus(); return; }
   const raw = $('#fPrice').value.trim();
   let price = raw === '' ? null : parseFloat(raw);
@@ -1110,43 +1143,60 @@ $('#exportBtn').addEventListener('click', () => {
 });
 $('#importBtn').addEventListener('click', () => $('#importFile').click());
 $('#importFile').addEventListener('change', e => {
-  const file = e.target.files[0];
+  const files = [...e.target.files];
   e.target.value = '';
-  if (!file) return;
-  const r = new FileReader();
-  r.onload = async () => {
-    try {
-      const d = JSON.parse(r.result);
-      if (!Array.isArray(d.categories) || !Array.isArray(d.items)) throw new Error('bad');
-      const ok = await confirmBox({
-        title: 'Импортировать данные?',
-        message: `В файле: ${d.categories.length} ${plural(d.categories.length, ['категория','категории','категорий'])}, ${d.items.length} ${plural(d.items.length, ['товар','товара','товаров'])}. Текущие данные будут заменены.`,
-        buttons: [
-          { label: 'Заменить', kind: 'primary', value: true  },
-          { label: 'Отмена',   kind: 'ghost',   value: false }
-        ]
-      });
-      if (!ok) return;
-      const CURS = Object.keys(SYM);
-      state.categories = d.categories.map((c, i) => ({
-        id: String(c.id || uid()), name: String(c.name || 'Без названия'),
-        color: c.color || PALETTE[i % PALETTE.length], created: +c.created || Date.now(),
-        note: typeof c.note === 'string' ? sanitizeNote(c.note) : ''
-      }));
-      state.items = d.items.map(x => ({
-        id: String(x.id || uid()), name: String(x.name || ''),
-        price: (x.price == null || !isFinite(+x.price)) ? null : +x.price,
-        currency: CURS.includes(x.currency) ? x.currency : 'UAH',
-        url: String(x.url || ''), desc: oneLine(x.desc),
-        categoryId: x.categoryId ? String(x.categoryId) : null,
-        bought: !!x.bought, created: +x.created || Date.now()
-      }));
-      save(); render();
-    } catch(err){
-      alert('Не удалось прочитать файл: нужен JSON, экспортированный из этого приложения.');
+  if (!files.length) return;
+  /* читаем все выбранные файлы, объединяем содержимое */
+  Promise.all(files.map(f => new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => {
+      try {
+        const d = JSON.parse(r.result);
+        if (!Array.isArray(d.categories) || !Array.isArray(d.items)) throw new Error('bad');
+        res(d);
+      } catch(err){ rej(f.name); }
+    };
+    r.onerror = () => rej(f.name);
+    r.readAsText(f);
+  })))
+  .then(async datas => {
+    /* несколько бэкапов объединяем (дубли по id отсеиваются), свежие данные последнего файла приоритетнее */
+    const cats = new Map(), items = new Map();
+    for (const d of datas){
+      for (const c of d.categories) cats.set(String(c.id || uid()), c);
+      for (const x of d.items) items.set(String(x.id || uid()), x);
     }
-  };
-  r.readAsText(file);
+    const d = { categories: [...cats.values()], items: [...items.values()] };
+    const ok = await confirmBox({
+      title: 'Импортировать данные?',
+      message: `${files.length > 1 ? `В ${files.length} файлах` : 'В файле'}: ${d.categories.length} ${plural(d.categories.length, ['категория','категории','категорий'])}, ${d.items.length} ${plural(d.items.length, ['товар','товара','товаров'])}. Текущие данные будут заменены.`,
+      buttons: [
+        { label: 'Заменить', kind: 'primary', value: true  },
+        { label: 'Отмена',   kind: 'ghost',   value: false }
+      ]
+    });
+    if (!ok) return;
+    const CURS = Object.keys(SYM);
+    state.categories = d.categories.map((c, i) => ({
+      id: String(c.id || uid()), name: noAngles(String(c.name || 'Без названия')),
+      color: c.color || PALETTE[i % PALETTE.length], created: +c.created || Date.now(),
+      note: typeof c.note === 'string' ? sanitizeNote(c.note) : ''
+    }));
+    state.items = d.items.map(x => ({
+      id: String(x.id || uid()), name: noAngles(String(x.name || '')),
+      price: (x.price == null || !isFinite(+x.price)) ? null : +x.price,
+      currency: CURS.includes(x.currency) ? x.currency : 'UAH',
+      url: String(x.url || ''), desc: oneLine(x.desc),
+      categoryId: x.categoryId ? String(x.categoryId) : null,
+      bought: !!x.bought, created: +x.created || Date.now()
+    }));
+    activeFilter = '';
+    byCatCache = null;
+    save(); render();
+  })
+  .catch(badName => {
+    alert(`Не удалось прочитать файл${typeof badName === 'string' ? ' «' + badName + '»' : ''}: нужен JSON, экспортированный из этого приложения.`);
+  });
 });
 $('#wipeBtn').addEventListener('click', async () => {
   const ok = await confirmBox({
@@ -1160,292 +1210,48 @@ $('#wipeBtn').addEventListener('click', async () => {
   if (ok){ state = { categories: [], items: [] }; save(); render(); }
 });
 
-/* ================= анимированный фон: «жидкий шёлк-хром» ================= */
+/* ================= фон: минималистичные точки (halftone-волна, инверсия) ================= */
 const BGFX = (() => {
   const cv = document.getElementById('bgfx');
   if (!cv) return { setTheme(){} };
   const ctx = cv.getContext ? cv.getContext('2d') : null;
   if (!ctx) return { setTheme(){} }; /* нет canvas-движка — просто пропускаем */
   const reduceMotion = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
-  let W = 0, H = 0, raf = null, running = false, lastTs = 0, t = 0, dark = false;
-  let bgGrid = null, strands = [], hairs = [];
-  let nextKick = 4, kickT = -1;
+  let W = 0, H = 0, raf = null, running = false, lastTs = 0, t = 0, sp = 34, dark = false;
 
-  /* палитры: инверсия настроения */
-  const P = () => dark ? {
-    veil: '7,7,8', hud: 'rgba(226,232,255,.55)', hudLine: 'rgba(226,232,255,.26)',
-    main:  ['#ffffff', '#b9c6ff', '#8ea0ff', '#dfe6ff'],
-    ink:   ['#9fb4ff', '#4a5bd4'],
-    accent:['#ff4d6b'],
-    mainA: .5, inkA: .55, accA: .5,
-    lighter: true, glowEvery: 4, glowBlur: 13,
-    grid: 'rgba(120,140,220,.07)', gridLines: true,
-    hair: 'rgba(223,233,255,.5)', hairRed: 'rgba(255,77,107,.55)'
-  } : {
-    veil: '244,246,249', hud: 'rgba(17,24,39,.52)', hudLine: 'rgba(17,24,39,.2)',
-    main:  ['#f9fafc', '#c6cdd7', '#f1f3f6', '#39404d', '#aab2bd', '#141922'],
-    ink:   ['#3c4452', '#141922'],
-    accent:['#e2283f'],
-    mainA: .5, inkA: .6, accA: .55,
-    lighter: false, glowEvery: 0, glowBlur: 0,
-    grid: 'rgba(17,24,39,.09)', gridLines: false,
-    hair: 'rgba(16,20,29,.55)', hairRed: 'rgba(226,40,63,.6)'
-  };
-
-  /* пучки: направление, длина, толщина, изгиб */
-  const ARMS = [
-    { a: 2.85, L: .74, w: 3.6, k:  2.2, ph: 0.0, kind: 'main',   n: 22 },
-    { a: 3.08, L: .60, w: 3.0, k: -1.7, ph: 1.4, kind: 'main',   n: 18 },
-    { a: 2.58, L: .52, w: 2.6, k:  2.9, ph: 2.8, kind: 'main',   n: 16 },
-    { a: 3.32, L: .44, w: 3.4, k: -2.1, ph: 4.0, kind: 'ink',    n: 12 },
-    { a: 2.32, L: .38, w: 3.0, k:  1.4, ph: 5.1, kind: 'ink',    n: 10 },
-    { a: 0.30, L: .15, w: 1.5, k: -0.7, ph: 0.7, kind: 'accent', n: 7  },
-    { a: 2.70, L: .13, w: 1.3, k:  0.8, ph: 3.6, kind: 'accent', n: 6  }
-  ];
-  /* контурные дуги вокруг композиции */
-  const CONTOURS = [
-    { rx: .30, ry: .22, a0: 2.4, a1: 5.2, ph: 0.0 },
-    { rx: .42, ry: .30, a0: 2.9, a1: 5.6, ph: 2.1 },
-    { rx: .24, ry: .34, a0: 3.4, a1: 6.0, ph: 4.0 }
-  ];
+  /* инверсия: белый фон — тёмные точки, чёрный фон — светлые */
+  const dotColor = () => dark ? [226, 232, 255] : [17, 24, 39];
+  const dotAlpha = () => dark ? 0.26 : 0.30;
+  const dotBase  = () => dark ? 1.1 : 1.2;
 
   function resize(){
     W = window.innerWidth; H = window.innerHeight;
     const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
     cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    /* фон-сетка: тёмная — техносетка, светлая — точки */
-    bgGrid = document.createElement('canvas');
-    bgGrid.width = cv.width; bgGrid.height = cv.height;
-    const g = bgGrid.getContext('2d');
-    g.setTransform(dpr, 0, 0, dpr, 0, 0);
-    const pal = P();
-    if (pal.gridLines){
-      g.strokeStyle = pal.grid; g.lineWidth = 1;
-      for (let x = 0; x <= W; x += 46){ g.beginPath(); g.moveTo(x, 0); g.lineTo(x, H); g.stroke(); }
-      for (let y = 0; y <= H; y += 46){ g.beginPath(); g.moveTo(0, y); g.lineTo(W, y); g.stroke(); }
-    } else {
-      g.fillStyle = pal.grid;
-      for (let y = 30; y < H; y += 30)
-        for (let x = 30; x < W; x += 30){ g.beginPath(); g.arc(x, y, 1.05, 0, Math.PI * 2); g.fill(); }
-    }
-    /* пряди: стабильные случайные параметры пучков */
-    strands = [];
-    ARMS.forEach((A, ai) => {
-      for (let q = 0; q < A.n; q++){
-        strands.push({
-          ai, kind: A.kind,
-          da: (Math.random() - .5) * 0.18,
-          dl: 0.66 + Math.random() * 0.40,
-          dw: 0.3 + Math.random() * 0.7,
-          ph: Math.random() * Math.PI * 2,
-          ph2: Math.random() * Math.PI * 2,
-          ci: q
-        });
-      }
-    });
-    /* волокна-волоски, дрейфующие у композиции */
-    hairs = Array.from({ length: 14 }, () => {
-      const a = Math.random() * Math.PI * 2, rr = 0.08 + Math.random() * 0.30;
-      return {
-        x: W * 0.86 + Math.cos(a) * rr * W * 0.5, y: H * 0.42 + Math.sin(a) * rr * H * 0.8,
-        len: 10 + Math.random() * 30, ang: Math.random() * Math.PI,
-        va: (Math.random() - .5) * 0.25, vx: (Math.random() - .5) * 8, vy: (Math.random() - .5) * 8,
-        ph: Math.random() * 9, red: Math.random() < .22
-      };
-    });
+    sp = Math.round(Math.max(30, Math.sqrt((W * H) / 1800))); /* ~1800 точек максимум */
   }
-
-  const hex2rgb = hx => [parseInt(hx.slice(1, 3), 16), parseInt(hx.slice(3, 5), 16), parseInt(hx.slice(5, 7), 16)];
-
-  /* одна прядь: гладкая квадратичная кривая с градиентом вдоль и мягким затуханием */
-  function strand(fx, fy, sd){
-    const pal = P();
-    const A = ARMS[sd.ai];
-    const m = Math.min(W, H);
-    const wob = reduceMotion ? 0 : 1;
-    const ang = A.a + Math.sin(t * 0.08 + A.ph + sd.ph) * 0.06 * wob + sd.da;
-    const len = A.L * sd.dl * (1 + Math.sin(t * 0.06 + A.ph + sd.ph2) * 0.05 * wob) * m;
-    const tipAng = ang + Math.sin(t * 0.07 + sd.ph2) * 0.09 * wob;
-    const dx = Math.cos(ang), dy = Math.sin(ang);
-    const px = -dy, py = dx;
-    /* контрольная точка задаёт плавный изгиб пучка */
-    const bend = A.k * sd.dw * m * 0.14 * Math.sin(t * 0.05 + sd.ph2);
-    const c1x = fx + dx * len * 0.44 + px * bend;
-    const c1y = fy + dy * len * 0.44 + py * bend;
-    const tipx = fx + Math.cos(tipAng) * len;
-    const tipy = fy + Math.sin(tipAng) * len;
-    /* цвет пряди */
-    let hx, al;
-    if (sd.kind === 'main'){ hx = pal.main[sd.ci % pal.main.length]; al = pal.mainA; }
-    else if (sd.kind === 'ink'){ hx = pal.ink[sd.ci % pal.ink.length]; al = pal.inkA; }
-    else { hx = pal.accent[sd.ci % pal.accent.length]; al = pal.accA; }
-    const [r, g2, b] = hex2rgb(hx);
-    const grad = ctx.createLinearGradient(fx, fy, tipx, tipy);
-    grad.addColorStop(0, `rgba(${r},${g2},${b},${al})`);
-    grad.addColorStop(0.55, `rgba(${r},${g2},${b},${(al * 0.45).toFixed(3)})`);
-    grad.addColorStop(1, `rgba(${r},${g2},${b},0)`);
-    ctx.save();
-    if (pal.glowEvery && sd.ci % pal.glowEvery === 0){
-      ctx.shadowBlur = pal.glowBlur;
-      ctx.shadowColor = `rgba(${r},${g2},${b},.55)`;
-    }
-    ctx.strokeStyle = grad;
-    ctx.lineCap = 'round';
-    ctx.lineWidth = (sd.kind === 'ink' ? 1.1 : 0.8) + sd.dw * (sd.kind === 'accent' ? 1.6 : 3.1);
-    ctx.beginPath();
-    ctx.moveTo(fx, fy);
-    ctx.quadraticCurveTo(c1x, c1y, tipx, tipy);
-    ctx.stroke();
-    ctx.restore();
-  }
-
-  /* насыщенный HUD: живая статистика + графические метки */
-  const PLUSES = [[.68, .22], [.965, .58], [.76, .74], [.94, .16], [.64, .52]];
-  function plus(x, y, sz, pal){
-    ctx.strokeStyle = pal.hud;
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(x - sz, y); ctx.lineTo(x + sz, y);
-    ctx.moveTo(x, y - sz); ctx.lineTo(x, y + sz);
-    ctx.stroke();
-  }
-  function drawHud(fx, fy){
-    const pal = P();
-    const m = Math.min(W, H);
-    ctx.save();
-    ctx.fillStyle = pal.hud;
-    ctx.strokeStyle = pal.hudLine;
-    ctx.lineWidth = 1;
-    const wob = reduceMotion ? 0 : 1;
-
-    /* --- уголки-скобки вокруг очага --- */
-    ctx.strokeStyle = pal.hudLine;
-    const br = m * 0.19, cs = 12;
-    [[-1,-1],[1,-1],[1,1],[-1,1]].forEach(([sx, sy]) => {
-      const x = fx + sx * br, y = fy + sy * br;
-      ctx.beginPath();
-      ctx.moveTo(x + sx * cs, y); ctx.lineTo(x, y); ctx.lineTo(x, y + sy * cs);
-      ctx.stroke();
-    });
-    /* --- плюсики-метки вокруг композиции --- */
-    for (const [px2, py2] of PLUSES) plus(px2 * W, py2 * H, 3.5, pal);
-    /* --- линейка --- */
-    const rx = fx + m * 0.10, ry = fy + m * 0.30;
-    for (let q = 0; q <= 5; q++){
-      const x = rx + q * 9;
-      ctx.beginPath(); ctx.moveTo(x, ry); ctx.lineTo(x, ry + (q % 5 === 0 ? 8 : 4)); ctx.stroke();
-    }
-    /* --- вертикальная надпись у правого края --- */
-    ctx.save();
-    ctx.translate(W - 10, H * 0.80);
-    ctx.rotate(-Math.PI / 2);
-    ctx.fillText('SILK — CHROME / LIVE — 02', 0, 0);
-    ctx.restore();
-    ctx.restore();
-  }
-  /* еле заметные водяные знаки на левой половине (поверх вуали) */
-  function drawLeftMarks(){
-    const pal = P();
-    ctx.save();
-    ctx.globalAlpha = 0.5;
-    plus(W * 0.09, H * 0.20, 4, pal);
-    ctx.strokeStyle = pal.hudLine;
-    ctx.beginPath();
-    ctx.moveTo(W * 0.05 * 0.9, H * 0.58 - 4); ctx.lineTo(W * 0.05 * 0.9 + 8, H * 0.58 + 4);
-    ctx.moveTo(W * 0.05 * 0.9 + 8, H * 0.58 - 4); ctx.lineTo(W * 0.05 * 0.9, H * 0.58 + 4);
-    ctx.stroke();
-    ctx.fillStyle = pal.hud;
-    ctx.font = '600 8px system-ui, sans-serif';
-    ctx.fillText('SYS/001 — OK', W * 0.07, H * 0.84);
-    ctx.strokeStyle = pal.hudLine;
-    ctx.beginPath(); ctx.moveTo(W * 0.07, H * 0.84 + 5); ctx.lineTo(W * 0.07 + 46, H * 0.84 + 5); ctx.stroke();
-    ctx.restore();
-  }
-
-  function draw(dt){
-    const pal = P();
-    const R = Math.max(W, H);
-    const fx = W * 0.86, fy = H * 0.42;
-    const wob = reduceMotion ? 0 : 1;
+  function draw(){
     ctx.clearRect(0, 0, W, H);
-    /* виньетка в тёмной теме */
-    if (dark){
-      const vg = ctx.createRadialGradient(W * 0.6, H * 0.45, R * 0.2, W * 0.6, H * 0.45, R * 0.95);
-      vg.addColorStop(0, 'rgba(0,0,0,0)');
-      vg.addColorStop(1, 'rgba(0,0,0,.5)');
-      ctx.fillStyle = vg;
-      ctx.fillRect(0, 0, W, H);
-    }
-    /* мягкое свечение устья пучков */
-    const core = ctx.createRadialGradient(fx, fy, 0, fx, fy, R * 0.10);
-    core.addColorStop(0, dark ? 'rgba(235,240,255,.85)' : 'rgba(255,255,255,.9)');
-    core.addColorStop(0.5, dark ? 'rgba(126,140,255,.35)' : 'rgba(198,205,215,.5)');
-    core.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = core;
-    ctx.fillRect(fx - R * 0.11, fy - R * 0.11, R * 0.22, R * 0.22);
-    /* контурные дуги */
-    ctx.strokeStyle = pal.hudLine;
-    ctx.lineWidth = 1;
-    for (const c of CONTOURS){
-      const rot = Math.sin(t * 0.05 + c.ph) * 0.05 * wob;
-      ctx.beginPath();
-      ctx.ellipse(fx, fy, c.rx * W, c.ry * H, rot, c.a0, c.a1);
-      ctx.stroke();
-    }
-    /* шёлковый пучок прядей (в тёмной — с накоплением свечения) */
-    ctx.globalCompositeOperation = pal.lighter ? 'lighter' : 'source-over';
-    for (const sd of strands) strand(fx, fy, sd);
-    ctx.globalCompositeOperation = 'source-over';
-    /* HUD-детали */
-    drawHud(fx, fy);
-    /* вуаль слева — читаемость списка */
-    const veil = ctx.createLinearGradient(0, 0, W * 0.60, 0);
-    veil.addColorStop(0, `rgba(${pal.veil},.94)`);
-    veil.addColorStop(0.5, `rgba(${pal.veil},.6)`);
-    veil.addColorStop(1, `rgba(${pal.veil},0)`);
-    ctx.fillStyle = veil;
-    ctx.fillRect(0, 0, W * 0.60, H);
-    /* сетка поверх */
-    ctx.drawImage(bgGrid, 0, 0, W, H);
-    /* водяные знаки слева */
-    drawLeftMarks();
-    /* дрейфующие волокна-волоски */
-    ctx.lineCap = 'round';
-    for (const hb of hairs){
-      if (!reduceMotion){
-        hb.x += hb.vx * dt; hb.y += hb.vy * dt; hb.ang += hb.va * dt;
-        hb.x += Math.sin(t * 0.5 + hb.ph) * 0.2;
-        if (hb.x < -30) hb.x = W + 30; else if (hb.x > W + 30) hb.x = -30;
-        if (hb.y < -30) hb.y = H + 30; else if (hb.y > H + 30) hb.y = -30;
-      }
-      const al = 0.35 + 0.3 * Math.sin(t * 1.1 + hb.ph);
-      ctx.strokeStyle = hb.red ? pal.hairRed : pal.hair;
-      ctx.globalAlpha = Math.max(0, al);
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(hb.x, hb.y);
-      ctx.lineTo(hb.x + Math.cos(hb.ang) * hb.len, hb.y + Math.sin(hb.ang) * hb.len);
-      ctx.stroke();
-    }
-    ctx.globalAlpha = 1;
-    /* мягкий глитч: редкий и деликатный */
-    if (!reduceMotion){
-      if (kickT < 0 && t > nextKick){ kickT = 0; }
-      if (kickT >= 0){
-        kickT += dt;
-        const dur = 0.16;
-        if (kickT < dur){
-          const n = 2 + (Math.random() * 3 | 0);
-          for (let q = 0; q < n; q++){
-            const sy = Math.random() * H, sh = 5 + Math.random() * 18;
-            const off = (Math.random() - .5) * 22;
-            ctx.drawImage(cv, 0, sy * (cv.height / H), cv.width, sh * (cv.height / H), off, sy, W, sh);
-          }
-        } else {
-          kickT = -1;
-          nextKick = t + 4 + Math.random() * 5;
-        }
+    const [r, g, b] = dotColor();
+    const A = dotAlpha(), rB = dotBase(), TAU = Math.PI * 2;
+    for (let y = sp / 2; y < H + sp; y += sp){
+      const gy = y / sp;
+      for (let x = sp / 2; x < W + sp; x += sp){
+        const gx = x / sp;
+        /* две пересекающиеся диагональные волны + медленный третий слой */
+        const u = (gx + gy) * 0.55;
+        const w = (gx - gy) * 0.42;
+        let v = Math.sin(u * 0.9 + t * 0.55)
+              + Math.cos(w * 1.1 - t * 0.4)
+              + Math.sin((u + w) * 0.35 + t * 0.25);
+        v = (v + 3) / 6; /* 0..1 */
+        const alpha = A * (0.08 + 0.92 * v * v);
+        if (alpha < 0.015) continue;
+        ctx.beginPath();
+        ctx.fillStyle = `rgba(${r},${g},${b},${alpha.toFixed(3)})`;
+        ctx.arc(x, y, rB * (0.25 + 1.75 * v * v), 0, TAU);
+        ctx.fill();
       }
     }
   }
@@ -1453,18 +1259,18 @@ const BGFX = (() => {
     if (!running) return;
     const dt = Math.min((ts - lastTs) / 1000, 0.05);
     lastTs = ts; t += dt;
-    draw(dt);
+    draw();
     raf = requestAnimationFrame(frame);
   }
   function start(){
     resize();
-    if (reduceMotion){ t = 7.3; draw(0); return; }
+    if (reduceMotion){ t = 7.3; draw(); return; } /* статичный кадр без анимации */
     if (running) return;
     running = true;
     lastTs = performance.now();
     raf = requestAnimationFrame(frame);
   }
-  window.addEventListener('resize', () => { resize(); if (!running) draw(0); });
+  window.addEventListener('resize', () => { resize(); if (!running) draw(); });
   document.addEventListener('visibilitychange', () => {
     if (document.hidden){ if (raf) cancelAnimationFrame(raf); raf = null; running = false; }
     else if (!reduceMotion){ running = true; lastTs = performance.now(); raf = requestAnimationFrame(frame); }
@@ -1487,5 +1293,5 @@ load();
 applyTheme(document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light');
 render();
 </script>
-<script>(function(){function c(){var b=a.contentDocument||(a.contentWindow&&a.contentWindow.document);if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a47a76c79ae6e77f',t:'MTc5MTUxODI3NQ=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+<script>(function(){function c(){var b=a.contentDocument||(a.contentWindow&&a.contentWindow.document);if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a48052bd58f4eecf',t:'MTc5MTU3OTcxNA=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
 </html>
