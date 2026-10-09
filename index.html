@@ -105,9 +105,13 @@ b,strong{font-weight:600}
 .form-card{padding:16px 18px 18px; margin-bottom:22px}
 .form-grid{display:grid; gap:12px;
   grid-template-columns:minmax(0,2.1fr) 116px 88px minmax(0,1.5fr);
-  grid-template-areas:"name price cur cat" "url url url btn"}
+  grid-template-areas:"name price cur cat" "url url url btn" "desc desc desc desc"}
 .area-name{grid-area:name}.area-price{grid-area:price}.area-cur{grid-area:cur}
 .area-cat{grid-area:cat}.area-url{grid-area:url}.area-btn{grid-area:btn; align-self:end}
+.area-desc{grid-area:desc; display:flex; flex-direction:column; gap:8px}
+#descToggle{align-self:flex-start}
+.item .desc{font-size:12.5px; color:var(--muted); margin-top:2px; word-break:break-word;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
 .field label{display:block; font-size:11.5px; font-weight:700; letter-spacing:.05em;
   text-transform:uppercase; color:var(--muted); margin:0 0 6px 2px}
 .inp{width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:10px;
@@ -218,7 +222,8 @@ b,strong{font-weight:600}
   .big{font-size:28px}
   .sum-right{align-items:flex-start}
   .form-grid{grid-template-columns:minmax(0,1fr) 96px;
-    grid-template-areas:"name name" "price cur" "cat cat" "url url" "btn btn"}
+    grid-template-areas:"name name" "price cur" "cat cat" "url url" "btn btn" "desc desc"}
+  .item .desc{white-space:normal}
   .cat-head{flex-wrap:wrap; row-gap:2px}
   .cat-head .meta{white-space:normal}
   .item{flex-wrap:wrap; row-gap:4px}
@@ -292,6 +297,10 @@ b,strong{font-weight:600}
           <label for="fUrl">Ссылка <span style="text-transform:none;letter-spacing:0">(необязательно)</span></label>
           <input class="inp" id="fUrl" type="text" inputmode="url" placeholder="https://…" maxlength="2000">
         </div>
+        <div class="area-desc">
+          <button type="button" class="linkish" id="descToggle">＋ Описание</button>
+          <input class="inp" id="fDesc" type="text" maxlength="300" placeholder="Необязательно" hidden>
+        </div>
         <div class="area-btn">
           <button class="btn primary wide" type="submit">Добавить</button>
         </div>
@@ -333,9 +342,13 @@ b,strong{font-weight:600}
       <label>Категория</label>
       <div class="dd" id="ddCatEdit"></div>
     </div>
-    <div class="field" style="margin-bottom:2px">
+    <div class="field">
       <label for="mUrl">Ссылка</label>
       <input class="inp" id="mUrl" type="text" inputmode="url" placeholder="https://…" maxlength="2000">
+    </div>
+    <div class="field" style="margin-bottom:2px">
+      <label for="mDesc">Описание <span style="text-transform:none;letter-spacing:0">(необязательно)</span></label>
+      <input class="inp" id="mDesc" type="text" maxlength="300" placeholder="Необязательно">
     </div>
     <div class="modal-actions">
       <button type="button" class="btn ghost" data-close>Отмена</button>
@@ -399,6 +412,7 @@ function plural(n, forms){
   if (a >= 2 && a <= 4 && (b < 12 || b > 14)) return forms[1];
   return forms[2];
 }
+const oneLine = v => String(v || '').replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 300);
 function normalizeUrl(u){
   u = (u || '').trim();
   if (!u) return '';
@@ -654,9 +668,10 @@ function itemRow(it){
     isHttp
       ? `<a class="link-btn" href="${esc(url)}" target="_blank" rel="noopener noreferrer" title="${esc(url)}">Открыть ↗</a>`
       : `<span class="link-btn dead" title="Некорректная ссылка">Открыть ↗</span>`;
+  const descHtml = it.desc ? `<div class="desc" title="${esc(it.desc)}">${esc(it.desc)}</div>` : '';
   return `<div class="item${it.bought ? ' bought' : ''}${it.id === lastAddedId ? ' new' : ''}" data-id="${it.id}">
     <input type="checkbox" data-act="toggle" ${it.bought ? 'checked' : ''} aria-label="Куплено">
-    <div class="name">${esc(it.name)}</div>
+    <div class="name">${esc(it.name)}${descHtml}</div>
     ${link}
     <div class="price" title="Цена">${fmtPrice(it)}</div>
     <button class="icon-btn" data-act="edit" title="Редактировать" aria-label="Редактировать">${SVG_EDIT}</button>
@@ -775,6 +790,7 @@ function openItemModal(id){
   ddCurEdit.setValue(SYM[it.currency] ? it.currency : 'UAH');
   ddCatEdit.setValue(it.categoryId || '');
   $('#mUrl').value = it.url || '';
+  $('#mDesc').value = it.desc || '';
   openModal('itemModal');
 }
 $('#itemForm').addEventListener('submit', e => {
@@ -790,6 +806,7 @@ $('#itemForm').addEventListener('submit', e => {
   it.price = price;
   it.currency = ddCurEdit.getValue();
   it.url = normalizeUrl($('#mUrl').value);
+  it.desc = oneLine($('#mDesc').value);
   it.categoryId = ddCatEdit.getValue() || null;
   save(); closeModal('itemModal'); render();
 });
@@ -889,6 +906,13 @@ $('#categories').addEventListener('change', e => {
 });
 
 /* ================= форма добавления ================= */
+$('#descToggle').addEventListener('click', () => {
+  const f = $('#fDesc');
+  f.hidden = !f.hidden;
+  $('#descToggle').textContent = f.hidden ? '＋ Описание' : '− Описание';
+  if (!f.hidden) f.focus();
+});
+
 $('#addForm').addEventListener('submit', e => {
   e.preventDefault();
   const name = $('#fName').value.trim();
@@ -900,6 +924,7 @@ $('#addForm').addEventListener('submit', e => {
     id: uid(), name, price,
     currency: ddCurAdd.getValue(),
     url: normalizeUrl($('#fUrl').value),
+    desc: oneLine($('#fDesc').value),
     categoryId: ddCatAdd.getValue() || null,
     bought: false, created: Date.now()
   };
@@ -911,6 +936,8 @@ $('#addForm').addEventListener('submit', e => {
   /* подсветка нового товара играется один раз; не переактивируем её при перерисовках */
   setTimeout(() => { lastAddedId = null; }, 1500);
   $('#fName').value = ''; $('#fPrice').value = ''; $('#fUrl').value = '';
+  $('#fDesc').value = ''; $('#fDesc').hidden = true;
+  $('#descToggle').textContent = '＋ Описание';
   $('#fName').focus();
   const el = $(`.item[data-id="${it.id}"]`);
   if (el && typeof el.scrollIntoView === 'function') el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
@@ -953,7 +980,8 @@ $('#importFile').addEventListener('change', e => {
         id: String(x.id || uid()), name: String(x.name || ''),
         price: (x.price == null || !isFinite(+x.price)) ? null : +x.price,
         currency: CURS.includes(x.currency) ? x.currency : 'UAH',
-        url: String(x.url || ''), categoryId: x.categoryId ? String(x.categoryId) : null,
+        url: String(x.url || ''), desc: oneLine(x.desc),
+        categoryId: x.categoryId ? String(x.categoryId) : null,
         bought: !!x.bought, created: +x.created || Date.now()
       }));
       save(); render();
@@ -1073,5 +1101,5 @@ applyTheme(document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light')
 render();
 </script>
 <script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/v4bc70e2c01a94c73b74392e4234840661791215815920" integrity="sha512-L0ha0OXavK/8okipN9F8BtP84dg9DUhPERbBXzwI6dgTA55d2+yweo3pn5CSFYs45/r8md2+xvUPtTdvTNRfjA==" data-cf-beacon='{"version":"2024.11.0","token":"1954b47c125f43f8b4338b3c4f804e4f","spa":2}' crossorigin="anonymous"></script>
-<script>(function(){function c(){var b=a.contentDocument||(a.contentWindow&&a.contentWindow.document);if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a479d6cc7efbb607',t:'MTc5MTUxMTcyMg=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+<script>(function(){function c(){var b=a.contentDocument||(a.contentWindow&&a.contentWindow.document);if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a479fa5cbcd6fc49',t:'MTc5MTUxMzE3OQ=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
 </html>
