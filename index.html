@@ -1,0 +1,1108 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Локальный трекер покупок: категории, цены, ссылки, итоги. Данные хранятся в браузере.">
+<title>Список покупок</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛍️</text></svg>">
+<script>/* тема до отрисовки, чтобы не мигало */
+try{var t=localStorage.getItem('shoplist.theme');if(!t)t=window.matchMedia&&matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';document.documentElement.dataset.theme=t;}catch(e){}</script>
+<style>
+/* ============ токены ============ */
+:root{
+  --bg:#f4f6f9; --card:#ffffff; --text:#1b2129; --muted:#6b7480;
+  --border:#e4e8ee; --hover:#f1f4f8; --input:#fbfcfe;
+  --accent:#5b7cfa; --accent-weak:#edf1fe; --on-accent:#ffffff;
+  --danger:#e5484d; --danger-weak:#fdecec; --ok:#188a52;
+  --ok-weak:#e7f6ee; --ok-hover:#dbf0e4;
+  --shadow:0 1px 2px rgba(16,24,40,.05), 0 1px 3px rgba(16,24,40,.06);
+  --shadow-pop:0 20px 60px rgba(10,15,30,.25);
+  --shadow-drop:0 8px 24px rgba(16,24,40,.16);
+  --bg-grad:linear-gradient(180deg,#e9eff9 0%,#f4f6f9 42%,#e8f1ec 100%);
+}
+[data-theme="dark"]{
+  --bg:#070708; --card:#121214; --text:#ececee; --muted:#96969e;
+  --border:#252529; --hover:#1b1b1e; --input:#0c0c0e;
+  --accent:#7b93ff; --accent-weak:#1a1a20; --on-accent:#0d1017;
+  --danger:#ff6a6f; --danger-weak:#2c1c1f; --ok:#3dd68c;
+  --ok-weak:#132019; --ok-hover:#182b20;
+  --shadow:0 1px 2px rgba(0,0,0,.5);
+  --shadow-pop:0 20px 60px rgba(0,0,0,.7);
+  --shadow-drop:0 8px 24px rgba(0,0,0,.65);
+  --bg-grad:linear-gradient(180deg,#050507 0%,#0b0b0e 55%,#08080a 100%);
+}
+/* ============ база ============ */
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0; background:var(--bg-grad); color:var(--text);
+  font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  font-size:15px; line-height:1.45;
+  transition:color .3s ease;
+}
+/* анимированный фон-волны (обе темы) */
+#bgfx{position:fixed; inset:0; width:100%; height:100%; z-index:-1; display:block; pointer-events:none}
+@media (prefers-reduced-motion: reduce){
+  #bgfx{opacity:.55}
+}
+.wrap{max-width:880px; margin:0 auto; padding:22px 16px 64px}
+button{font-family:inherit}
+b,strong{font-weight:600}
+.num{font-variant-numeric:tabular-nums}
+/* ============ шапка ============ */
+.top{display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin:6px 0 18px}
+.top h1{margin:0; font-size:23px; letter-spacing:-.3px}
+.top .sub{margin:2px 0 0; color:var(--muted); font-size:13px}
+#themeBtn{
+  width:38px;height:38px;border-radius:11px;border:1px solid var(--border);
+  background:var(--card);cursor:pointer;font-size:17px;line-height:1;color:var(--text);
+  box-shadow:var(--shadow); transition:background .15s;
+}
+#themeBtn:hover{background:var(--hover)}
+/* ============ карточки ============ */
+.card{background:var(--card); border:1px solid var(--border); border-radius:16px; box-shadow:var(--shadow)}
+/* ============ сводка ============ */
+.summary{padding:18px 20px 16px; margin-bottom:14px}
+.sum-top{display:flex; justify-content:space-between; align-items:flex-end; gap:16px; flex-wrap:wrap}
+.lbl{font-size:11.5px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); margin-bottom:4px}
+.big{font-size:34px; font-weight:750; letter-spacing:-.8px; line-height:1.1}
+.mini{font-size:12.5px; color:var(--muted); margin-top:2px}
+.sum-right{display:flex; flex-direction:column; gap:7px; align-items:flex-end}
+.sum-line{display:flex; align-items:baseline; gap:10px}
+.sum-line .lbl{margin:0}
+.sum-line b{font-size:19px; font-weight:700; font-variant-numeric:tabular-nums}
+.sum-line.bought b{color:var(--ok)}
+.divider{height:1px; background:var(--border); margin:14px 0 12px}
+.chips{display:flex; flex-wrap:wrap; gap:8px}
+.chip{display:inline-flex; align-items:center; gap:7px; padding:5px 11px; border-radius:999px;
+  background:var(--accent-weak); font-size:13px; color:var(--text)}
+.chip .dot{width:8px; height:8px; border-radius:50%; background:var(--c, var(--accent)); flex-shrink:0}
+.chip b{font-weight:650}
+.chips-hint{color:var(--muted); font-size:13px}
+/* ============ навигация по категориям ============ */
+.catnav{display:flex; align-items:center; gap:12px; padding:12px 16px; margin-bottom:14px}
+.catnav-lbl{font-size:11.5px; font-weight:700; letter-spacing:.08em; text-transform:uppercase;
+  color:var(--muted); white-space:nowrap}
+.catnav .dd{flex:1; min-width:0; max-width:340px; margin-left:auto}
+.dd-hint{margin-left:auto; padding-left:14px; color:var(--muted); font-size:12.5px;
+  font-variant-numeric:tabular-nums; white-space:nowrap}
+.dd-opt .chk{margin-left:2px}
+.catnav{flex-wrap:wrap}
+.catnav.filtered{border-color:var(--accent)}
+.filter-reset{margin-left:auto; border:1px solid var(--border); background:transparent; color:var(--muted);
+  border-radius:999px; padding:5px 13px; font-size:12.5px; font-weight:600; cursor:pointer; transition:all .15s}
+.filter-reset:hover{color:var(--danger); border-color:var(--danger)}
+.filter-reset.ghosted{visibility:hidden; pointer-events:none} /* место резервируется — панель не «плавает» */
+.filter-info{flex:1 1 100%; display:flex; align-items:center; gap:6px; flex-wrap:wrap;
+  padding-top:10px; border-top:1px dashed var(--border); color:var(--muted); font-size:13px}
+.filter-info[hidden]{display:none}
+.filter-info b{color:var(--text); font-weight:650}
+.rem-badge{display:inline-flex; align-items:center; padding:3px 11px; border-radius:999px;
+  background:var(--accent-weak); color:var(--accent); font-size:13px; font-weight:700;
+  white-space:nowrap; font-variant-numeric:tabular-nums}
+.rem-badge.done{background:var(--ok-weak); color:var(--ok)}
+.chip.active{outline:2px solid var(--accent); outline-offset:1px}
+/* ============ форма ============ */
+.form-card{padding:16px 18px 18px; margin-bottom:22px}
+.form-grid{display:grid; gap:12px;
+  grid-template-columns:minmax(0,2.1fr) 116px 88px minmax(0,1.5fr);
+  grid-template-areas:"name price cur cat" "url url url btn"}
+.area-name{grid-area:name}.area-price{grid-area:price}.area-cur{grid-area:cur}
+.area-cat{grid-area:cat}.area-url{grid-area:url}.area-btn{grid-area:btn; align-self:end}
+.field label{display:block; font-size:11.5px; font-weight:700; letter-spacing:.05em;
+  text-transform:uppercase; color:var(--muted); margin:0 0 6px 2px}
+.inp{width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:10px;
+  background:var(--input); color:var(--text); font-size:15px; font-family:inherit; outline:none;
+  transition:border-color .15s, box-shadow .15s}
+.inp:focus{border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-weak)}
+.inp::placeholder{color:var(--muted); opacity:.7}
+/* ============ кастомные дропдауны ============ */
+.dd{position:relative}
+.dd-btn{display:flex; align-items:center; justify-content:space-between; gap:8px;
+  text-align:left; cursor:pointer; padding-right:11px}
+.dd-btn .chev{color:var(--muted); flex-shrink:0; transition:transform .16s}
+.dd.open .chev{transform:rotate(180deg)}
+.dd-label{overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.dd-pop{position:absolute; top:calc(100% + 6px); left:0; min-width:100%; width:max-content;
+  max-width:min(260px, 88vw); max-height:262px; overflow:auto; overscroll-behavior:contain;
+  background:var(--card); border:1px solid var(--border); border-radius:12px;
+  box-shadow:var(--shadow-drop); padding:5px; display:none; z-index:40}
+.dd-pop.right{left:auto; right:0}
+.dd-pop.open{display:block}
+.dd-opt{display:flex; align-items:center; gap:9px; width:100%; padding:8px 10px; border:none;
+  border-radius:8px; background:transparent; color:var(--text); font-size:14px; font-family:inherit;
+  cursor:pointer; text-align:left}
+.dd-opt:hover, .dd-opt.active{background:var(--hover)}
+.dd-opt .dot{width:9px; height:9px; border-radius:50%; background:var(--c,var(--accent)); flex-shrink:0}
+.dd-opt .grow{flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.dd-opt .chk{flex-shrink:0; color:var(--accent); visibility:hidden}
+.dd-opt.sel{color:var(--accent); font-weight:600}
+.dd-opt.sel .chk{visibility:visible}
+.cat-flex{display:flex; gap:6px}
+.cat-flex .inp, .cat-flex .dd{flex:1; min-width:0}
+.btn{padding:10px 16px; border-radius:10px; border:1px solid transparent; font-weight:650;
+  font-size:14px; cursor:pointer; transition:filter .15s, background .15s; white-space:nowrap}
+.btn.primary{background:var(--accent); color:var(--on-accent)}
+.btn.primary:hover{filter:brightness(1.08)}
+.btn.ghost{background:transparent; border-color:var(--border); color:var(--text)}
+.btn.ghost:hover{background:var(--hover)}
+.btn.danger{background:var(--danger); color:#fff}
+.btn.danger:hover{filter:brightness(1.08)}
+.btn.pill{border-radius:999px; padding:8px 14px}
+.btn.wide{width:100%}
+.plus-btn{width:40px; border:1px dashed var(--border); background:transparent; color:var(--muted);
+  border-radius:10px; font-size:17px; cursor:pointer; flex-shrink:0; transition:all .15s}
+.plus-btn:hover{border-color:var(--accent); color:var(--accent)}
+/* ============ категории ============ */
+.cat{margin-bottom:14px; overflow:hidden}
+.cat-head{display:flex; align-items:center; gap:10px; padding:13px 12px 13px 18px}
+.cat-head .dot{width:10px; height:10px; border-radius:50%; background:var(--c,var(--accent)); flex-shrink:0}
+.cat-head h2{margin:0; font-size:15.5px; font-weight:700; letter-spacing:-.1px; white-space:nowrap;
+  overflow:hidden; text-overflow:ellipsis}
+.cat-head .meta{color:var(--muted); font-size:13px; white-space:nowrap}
+.cat-head .meta .ok{color:var(--ok)}
+.cat-head .grow{flex:1; min-width:8px}
+.icon-btn{width:30px; height:30px; border:none; border-radius:8px; background:transparent;
+  color:var(--muted); display:inline-grid; place-items:center; cursor:pointer; flex-shrink:0;
+  transition:background .15s, color .15s}
+.icon-btn:hover{background:var(--hover); color:var(--text)}
+.icon-btn.del:hover{color:var(--danger); background:var(--danger-weak)}
+.icon-btn svg{display:block}
+.empty{padding:14px 18px 16px; color:var(--muted); font-size:13.5px; border-top:1px solid var(--border)}
+/* ============ товары ============ */
+.item{display:flex; align-items:center; gap:12px; padding:11px 12px 11px 18px; border-top:1px solid var(--border)}
+.item:hover{background:var(--hover)}
+.item.new{animation:flash 1.4s ease}
+@keyframes flash{0%{background:var(--accent-weak)}100%{background:transparent}}
+.item input[type=checkbox]{width:19px; height:19px; accent-color:var(--accent); cursor:pointer; flex-shrink:0; margin:0}
+.item .name{flex:1; min-width:0; font-size:15px; word-break:break-word}
+.item .price{font-weight:650; white-space:nowrap; font-variant-numeric:tabular-nums}
+.link-btn{font-size:13px; font-weight:600; color:var(--accent); text-decoration:none; white-space:nowrap;
+  padding:5px 10px; border-radius:8px; background:var(--accent-weak); transition:filter .15s}
+.link-btn:hover{filter:brightness(.96); text-decoration:underline}
+.link-btn.dead{color:var(--muted); cursor:not-allowed}
+.item.bought{background:var(--ok-weak); box-shadow:inset 3px 0 0 var(--ok)}
+.item.bought:hover{background:var(--ok-hover)}
+.item.bought input[type=checkbox]{accent-color:var(--ok)}
+.item.bought .name{text-decoration:line-through; color:var(--muted)}
+.item.bought .price{color:var(--muted); text-decoration:line-through; font-weight:500}
+@media (hover:hover){
+  .item .icon-btn{opacity:0}
+  .item:hover .icon-btn, .item .icon-btn:focus-visible{opacity:1}
+}
+/* ============ пустой экран ============ */
+.hero{padding:34px 22px; text-align:center; margin-bottom:14px}
+.hero h2{margin:0 0 6px; font-size:18px}
+.hero p{margin:0 0 16px; color:var(--muted); font-size:14px}
+.chips-suggest{display:flex; flex-wrap:wrap; gap:8px; justify-content:center}
+/* ============ модалки ============ */
+.overlay{position:fixed; inset:0; background:rgba(8,12,20,.45); -webkit-backdrop-filter:blur(3px);
+  backdrop-filter:blur(3px); display:none; align-items:center; justify-content:center; padding:16px; z-index:50}
+.overlay.open{display:flex}
+.modal{background:var(--card); border:1px solid var(--border); border-radius:16px; padding:20px;
+  width:100%; max-width:430px; box-shadow:var(--shadow-pop); animation:pop .18s ease}
+@keyframes pop{from{transform:scale(.96); opacity:0}}
+.modal h3{margin:0 0 4px; font-size:17px; letter-spacing:-.2px}
+.modal p{margin:0 0 14px; color:var(--muted); font-size:14px}
+.modal .field{margin-bottom:12px}
+.modal-actions{display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap; margin-top:18px}
+.modal-grid{display:grid; grid-template-columns:1fr 86px; gap:10px}
+/* ============ подвал ============ */
+.foot{display:flex; gap:4px 14px; flex-wrap:wrap; justify-content:center; align-items:center;
+  color:var(--muted); font-size:13px; margin-top:28px}
+.linkish{background:none; border:none; padding:2px 4px; color:var(--muted); cursor:pointer;
+  font-size:13px; text-decoration:underline dotted; border-radius:6px}
+.linkish:hover{color:var(--text)}
+.linkish.warn:hover{color:var(--danger)}
+/* ============ адаптив ============ */
+@media (max-width:680px){
+  .big{font-size:28px}
+  .sum-right{align-items:flex-start}
+  .form-grid{grid-template-columns:minmax(0,1fr) 96px;
+    grid-template-areas:"name name" "price cur" "cat cat" "url url" "btn btn"}
+  .cat-head{flex-wrap:wrap; row-gap:2px}
+  .cat-head .meta{white-space:normal}
+  .item{flex-wrap:wrap; row-gap:4px}
+  .item .name{flex-basis:calc(100% - 31px)}
+  .item .link-btn{margin-right:auto}
+  .item .price{order:5; margin-left:auto}
+  .item .icon-btn{order:6}
+}
+</style>
+</head>
+<body>
+<canvas id="bgfx" aria-hidden="true"></canvas>
+<div class="wrap">
+
+  <header class="top">
+    <div>
+      <h1>🛍️ Список покупок</h1>
+      <p class="sub">Всё, что хочется купить — в одном месте. Данные хранятся в этом браузере.</p>
+    </div>
+    <button id="themeBtn" title="Сменить тему" aria-label="Сменить тему">🌙</button>
+  </header>
+
+  <!-- ======== сводка ======== -->
+  <section class="card summary" aria-label="Сводка">
+    <div class="sum-top">
+      <div>
+        <div class="lbl">Всего к покупке</div>
+        <div class="big num" id="sumTotal">0 ₴</div>
+        <div class="mini" id="sumCount"></div>
+      </div>
+      <div class="sum-right">
+        <div class="sum-line">
+          <span class="lbl">Осталось купить</span>
+          <b class="num" id="sumLeft">0 ₴</b>
+        </div>
+        <div class="sum-line bought">
+          <span class="lbl">Уже куплено</span>
+          <b class="num" id="sumBought">0 ₴</b>
+        </div>
+      </div>
+    </div>
+    <div class="divider"></div>
+    <div class="chips" id="sumChips"></div>
+  </section>
+
+  <!-- ======== навигация по категориям ======== -->
+  <nav class="card catnav" aria-label="Фильтр по категориям">
+    <span class="catnav-lbl">Категория</span>
+    <div class="dd" id="ddCatNav"></div>
+    <button type="button" class="filter-reset ghosted" id="filterReset">Сбросить ✕</button>
+    <div class="filter-info" id="filterInfo"></div>
+  </nav>
+
+  <!-- ======== форма добавления ======== -->
+  <section class="card form-card" aria-label="Добавить товар">
+    <form id="addForm" autocomplete="off">
+      <div class="form-grid">
+        <div class="field area-name">
+          <label for="fName">Название</label>
+          <input class="inp" id="fName" type="text" required maxlength="200">
+        </div>
+        <div class="field area-price">
+          <label for="fPrice">Цена</label>
+          <input class="inp num" id="fPrice" type="number" inputmode="decimal" min="0" step="0.01" placeholder="—">
+        </div>
+        <div class="field area-cur">
+          <label>Валюта</label>
+          <div class="dd" id="ddCurAdd"></div>
+        </div>
+        <div class="field area-cat">
+          <label>Категория</label>
+          <div class="cat-flex">
+            <div class="dd" id="ddCatAdd"></div>
+            <button type="button" class="plus-btn" id="newCatBtn" title="Новая категория" aria-label="Новая категория">＋</button>
+          </div>
+        </div>
+        <div class="field area-url">
+          <label for="fUrl">Ссылка <span style="text-transform:none;letter-spacing:0">(необязательно)</span></label>
+          <input class="inp" id="fUrl" type="text" inputmode="url" placeholder="https://…" maxlength="2000">
+        </div>
+        <div class="area-btn">
+          <button class="btn primary wide" type="submit">Добавить</button>
+        </div>
+      </div>
+    </form>
+  </section>
+
+  <!-- ======== категории и товары ======== -->
+  <main id="categories"></main>
+
+  <footer class="foot">
+    <button class="linkish" id="exportBtn" type="button">Экспорт в файл</button>
+    <button class="linkish" id="importBtn" type="button">Импорт из файла</button>
+    <button class="linkish warn" id="wipeBtn" type="button">Очистить всё</button>
+  </footer>
+  <input type="file" id="importFile" accept="application/json,.json" hidden>
+</div>
+
+<!-- ======== модалка: товар ======== -->
+<div class="overlay" id="itemModal" role="dialog" aria-modal="true" aria-labelledby="mTitle">
+  <form class="modal" id="itemForm">
+    <h3 id="mTitle">Редактировать товар</h3>
+    <p>Изменения сохранятся сразу после нажатия «Сохранить».</p>
+    <div class="field">
+      <label for="mName">Название</label>
+      <input class="inp" id="mName" type="text" required maxlength="200">
+    </div>
+    <div class="modal-grid">
+      <div class="field">
+        <label for="mPrice">Цена</label>
+        <input class="inp num" id="mPrice" type="number" inputmode="decimal" min="0" step="0.01" placeholder="—">
+      </div>
+      <div class="field">
+        <label>Валюта</label>
+        <div class="dd" id="ddCurEdit"></div>
+      </div>
+    </div>
+    <div class="field">
+      <label>Категория</label>
+      <div class="dd" id="ddCatEdit"></div>
+    </div>
+    <div class="field" style="margin-bottom:2px">
+      <label for="mUrl">Ссылка</label>
+      <input class="inp" id="mUrl" type="text" inputmode="url" placeholder="https://…" maxlength="2000">
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="btn ghost" data-close>Отмена</button>
+      <button type="submit" class="btn primary">Сохранить</button>
+    </div>
+  </form>
+</div>
+
+<!-- ======== модалка: категория ======== -->
+<div class="overlay" id="catModal" role="dialog" aria-modal="true" aria-labelledby="cTitle">
+  <form class="modal" id="catForm">
+    <h3 id="cTitle">Новая категория</h3>
+    <p id="cHint">Категории помогают группировать товары и видеть суммы по каждой.</p>
+    <div class="field" style="margin-bottom:2px">
+      <label for="cName">Название</label>
+      <input class="inp" id="cName" type="text" required maxlength="60" placeholder="Например: Электроника">
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="btn ghost" data-close>Отмена</button>
+      <button type="submit" class="btn primary" id="cSave">Создать</button>
+    </div>
+  </form>
+</div>
+
+<!-- ======== модалка: подтверждение ======== -->
+<div class="overlay" id="confirmModal" role="alertdialog" aria-modal="true" aria-labelledby="confirmTitle">
+  <div class="modal">
+    <h3 id="confirmTitle"></h3>
+    <p id="confirmMsg" style="display:none"></p>
+    <div class="modal-actions" id="confirmBtns"></div>
+  </div>
+</div>
+
+<script>
+'use strict';
+/* ================= утилиты ================= */
+const $  = s => document.querySelector(s);
+const $$ = s => [...document.querySelectorAll(s)];
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2, 9));
+const nf = new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 });
+
+const SYM = { UAH: '₴', USD: '$', EUR: '€', PLN: 'zł', GBP: '£' };
+const PALETTE = ['#5b7cfa','#22a06b','#e5484d','#f76b15','#8e4ec6','#00a2c7','#d6409f','#64748b'];
+const SUGGEST = ['Электроника', 'Одежда', 'Книги', 'Химия для уборки', 'Аптечка', 'Еда'];
+const SVG_EDIT  = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>';
+const SVG_TRASH = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>';
+const CHEV_SVG  = '<svg class="chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>';
+const CHECK_SVG = '<svg class="chk" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
+const CUR_OPTIONS = [{ value: 'UAH', label: '₴ UAH' }, { value: 'USD', label: '$ USD' }];
+
+/* localStorage может быть недоступен в песочнице предпросмотра — подстраховка */
+const store = (() => {
+  try { const k='__t'; localStorage.setItem(k,'1'); localStorage.removeItem(k); return localStorage; }
+  catch(e){ const m={}; return { getItem:k=>(k in m?m[k]:null), setItem:(k,v)=>{m[k]=String(v);}, removeItem:k=>{delete m[k];} }; }
+})();
+
+function plural(n, forms){
+  const a = n % 10, b = n % 100;
+  if (a === 1 && b !== 11) return forms[0];
+  if (a >= 2 && a <= 4 && (b < 12 || b > 14)) return forms[1];
+  return forms[2];
+}
+function normalizeUrl(u){
+  u = (u || '').trim();
+  if (!u) return '';
+  if (/^https?:\/\//i.test(u)) return u;
+  if(/^[^\s]+\.[^\s]{2,}/.test(u)) return 'https://' + u; // "eva.ua/pr123" → https://…
+  return u;
+}
+
+/* ================= состояние ================= */
+const LS_KEY = 'shoplist.v1';
+let state = { categories: [], items: [] };
+let lastAddedId = null;
+let formCategoryChoice = null; // id категории, которую нужно выбрать в форме после рендера
+let activeFilter = '';         // '' | id категории | '__uncat' — фильтр отображения
+
+function save(){ store.setItem(LS_KEY, JSON.stringify(state)); }
+function load(){
+  try {
+    const raw = store.getItem(LS_KEY);
+    if (!raw) return;
+    const d = JSON.parse(raw);
+    state.categories = Array.isArray(d.categories) ? d.categories : [];
+    state.items      = Array.isArray(d.items) ? d.items : [];
+    state.categories.forEach((c,i) => { if(!c.color) c.color = PALETTE[i % PALETTE.length]; });
+  } catch(e){ /* повреждённые данные игнорируем */ }
+}
+
+/* ================= суммы ================= */
+function perCurrency(list){
+  const m = new Map();
+  for (const it of list){
+    if (it.price == null) continue;
+    m.set(it.currency, (m.get(it.currency) || 0) + it.price);
+  }
+  return [...m.entries()].map(([cur, sum]) => ({ cur, sum: Math.round(sum * 100) / 100 }));
+}
+const fmtSum  = x => nf.format(x.sum) + ' ' + SYM[x.cur];
+const fmtSums = arr => arr.map(fmtSum).join(' + ');
+const fmtPrice = it => it.price == null ? '—' : nf.format(it.price) + ' ' + SYM[it.currency];
+const itemsOf = catId => state.items.filter(i => i.categoryId === catId);
+
+/* ================= кастомные дропдауны ================= */
+const catOptions = () => [
+  { value: '', label: 'Без категории', dot: '#98a1ad' },
+  ...state.categories.map(c => ({ value: c.id, label: c.name, dot: c.color }))
+];
+
+/* опции навигации: «Все категории» + сумма остатка по каждой */
+const catSum = id => {
+  const s = perCurrency(itemsOf(id).filter(i => !i.bought));
+  return s.length ? fmtSums(s) : '0 ' + SYM.UAH;
+};
+const catNavOptions = () => {
+  const opts = [{ value: '', label: 'Все категории' }];
+  for (const c of state.categories)
+    opts.push({ value: c.id, label: c.name, dot: c.color, hint: catSum(c.id) });
+  if (itemsOf(null).length)
+    opts.push({ value: '__uncat', label: 'Без категории', dot: '#98a1ad', hint: catSum(null) });
+  return opts;
+};
+
+class Dropdown {
+  static all = [];
+  static closeAll(except){ for (const d of Dropdown.all){ if (d !== except) d.close(); } }
+  static closeAnyOpen(){ const d = Dropdown.all.find(x => x.isOpen()); if (d){ d.close(); return true; } return false; }
+
+  constructor(mount, { options = [], value, onChange = null, alignRight = false, ariaLabel = '' } = {}){
+    this.onChange = onChange;
+    this.root = mount;
+    this.btn = document.createElement('button');
+    this.btn.type = 'button';
+    this.btn.className = 'inp dd-btn';
+    this.btn.setAttribute('aria-haspopup', 'listbox');
+    this.btn.setAttribute('aria-expanded', 'false');
+    if (ariaLabel) this.btn.setAttribute('aria-label', ariaLabel);
+    this.btn.innerHTML = '<span class="dd-label"></span>' + CHEV_SVG;
+    this.labelEl = this.btn.querySelector('.dd-label');
+    this.pop = document.createElement('div');
+    this.pop.className = 'dd-pop' + (alignRight ? ' right' : '');
+    this.pop.setAttribute('role', 'listbox');
+    mount.appendChild(this.btn);
+    mount.appendChild(this.pop);
+    this.options = []; this.value = null; this.activeIdx = -1;
+    this.setOptions(options, value);
+    this.btn.addEventListener('click', e => {
+      e.stopPropagation();
+      Dropdown.closeAll(this);
+      this.toggle();
+    });
+    this.btn.addEventListener('keydown', e => this.onKey(e));
+    Dropdown.all.push(this);
+  }
+  isOpen(){ return this.pop.classList.contains('open'); }
+  open(){
+    Dropdown.closeAll(this);
+    this.pop.classList.add('open');
+    this.root.classList.add('open');
+    this.btn.setAttribute('aria-expanded', 'true');
+    this.activeIdx = Math.max(0, this.options.findIndex(o => o.value === this.value));
+    this.paintActive();
+    this.scrollToActive();
+  }
+  close(){
+    this.pop.classList.remove('open');
+    this.root.classList.remove('open');
+    this.btn.setAttribute('aria-expanded', 'false');
+    this.activeIdx = -1;
+    this.paintActive();
+  }
+  toggle(){ this.isOpen() ? this.close() : this.open(); }
+  paintActive(){
+    [...this.pop.children].forEach((el, i) => el.classList.toggle('active', i === this.activeIdx));
+  }
+  scrollToActive(){
+    const el = this.pop.children[this.activeIdx];
+    if (el && typeof el.scrollIntoView === 'function'){ try { el.scrollIntoView({ block: 'nearest' }); } catch(e){} }
+  }
+  renderPop(){
+    this.pop.innerHTML = '';
+    for (const o of this.options){
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'dd-opt' + (o.value === this.value ? ' sel' : '');
+      b.setAttribute('role', 'option');
+      b.setAttribute('aria-selected', o.value === this.value ? 'true' : 'false');
+      if (o.dot){
+        const dot = document.createElement('span');
+        dot.className = 'dot';
+        dot.style.setProperty('--c', o.dot);
+        b.appendChild(dot);
+      }
+      const t = document.createElement('span');
+      t.className = 'grow';
+      t.textContent = o.label;
+      b.appendChild(t);
+      if (o.hint){
+        const h = document.createElement('span');
+        h.className = 'dd-hint';
+        h.textContent = o.hint;
+        b.appendChild(h);
+      }
+      b.insertAdjacentHTML('beforeend', CHECK_SVG);
+      b.addEventListener('click', () => { this.setValue(o.value); this.close(); this.btn.focus(); });
+      this.pop.appendChild(b);
+    }
+  }
+  renderLabel(){
+    const o = this.options.find(x => x.value === this.value);
+    this.labelEl.textContent = o ? o.label : '—';
+  }
+  setOptions(options, preferred){
+    this.options = options || [];
+    const vals = this.options.map(o => o.value);
+    if (preferred !== undefined && vals.includes(preferred)) this.value = preferred;
+    else if (!vals.includes(this.value)) this.value = vals.length ? vals[0] : null;
+    this.renderPop(); this.renderLabel();
+  }
+  setValue(v){
+    if (!this.options.some(o => o.value === v)) return;
+    const changed = v !== this.value;
+    this.value = v;
+    this.renderPop(); this.renderLabel();
+    if (changed && typeof this.onChange === 'function') this.onChange(this.value);
+  }
+  getValue(){ return this.value; }
+  move(dir){
+    if (!this.options.length) return;
+    this.activeIdx = (this.activeIdx + dir + this.options.length) % this.options.length;
+    this.paintActive();
+    this.scrollToActive();
+  }
+  onKey(e){
+    const open = this.isOpen();
+    switch (e.key){
+      case 'ArrowDown': e.preventDefault(); open ? this.move(1)  : this.open(); break;
+      case 'ArrowUp':   e.preventDefault(); open ? this.move(-1) : this.open(); break;
+      case 'Home': if (open){ e.preventDefault(); this.activeIdx = 0; this.paintActive(); } break;
+      case 'End':  if (open){ e.preventDefault(); this.activeIdx = this.options.length - 1; this.paintActive(); } break;
+      case 'Enter':
+        e.preventDefault();
+        if (open && this.activeIdx >= 0){ this.setValue(this.options[this.activeIdx].value); this.close(); }
+        else this.toggle();
+        break;
+      case ' ': e.preventDefault(); this.toggle(); break;
+      case 'Escape':
+        if (open){ e.preventDefault(); e.stopPropagation(); this.close(); }
+        break;
+      case 'Tab': this.close(); break;
+    }
+  }
+}
+
+const ddCurAdd  = new Dropdown($('#ddCurAdd'),  { options: CUR_OPTIONS, value: 'UAH', alignRight: true, ariaLabel: 'Валюта' });
+const ddCurEdit = new Dropdown($('#ddCurEdit'), { options: CUR_OPTIONS, value: 'UAH', alignRight: true, ariaLabel: 'Валюта' });
+const ddCatAdd  = new Dropdown($('#ddCatAdd'),  { options: catOptions(), value: '', ariaLabel: 'Категория' });
+const ddCatEdit = new Dropdown($('#ddCatEdit'), { options: catOptions(), value: '', ariaLabel: 'Категория' });
+const ddCatNav  = new Dropdown($('#ddCatNav'),  { options: catNavOptions(), value: '', ariaLabel: 'Фильтр по категориям' });
+
+/* фильтр: показывать только выбранную категорию */
+ddCatNav.onChange = v => {
+  const nv = v || '';
+  if (activeFilter === nv) return;
+  activeFilter = nv;
+  render();
+};
+$('#filterReset').addEventListener('click', () => { activeFilter = ''; render(); });
+
+/* строка-инфо в панели: всегда на месте, панель не меняет размер */
+function updateFilterUI(){
+  const nav = document.querySelector('.catnav'), info = $('#filterInfo'), reset = $('#filterReset');
+  const z = '0 ' + SYM.UAH;
+  let kids;
+  if (!activeFilter){
+    kids = state.items;
+    const rem = perCurrency(kids.filter(i => !i.bought));
+    const tot = perCurrency(kids);
+    info.innerHTML = `Показаны <b>все категории</b>&nbsp; · &nbsp;осталось: <b class="num">${rem.length ? fmtSums(rem) : z}</b>&nbsp; · &nbsp;всего: <b class="num">${tot.length ? fmtSums(tot) : z}</b>`;
+    nav.classList.remove('filtered');
+  } else {
+    const id = activeFilter === '__uncat' ? null : activeFilter;
+    const cat = id === null ? null : state.categories.find(x => x.id === id);
+    const name = id === null ? 'Без категории' : (cat ? cat.name : '');
+    kids = itemsOf(id);
+    const rem = perCurrency(kids.filter(i => !i.bought));
+    const tot = perCurrency(kids);
+    info.innerHTML = `Показана только <b>«${esc(name)}»</b>&nbsp; · &nbsp;осталось: <b class="num">${rem.length ? fmtSums(rem) : z}</b>&nbsp; · &nbsp;всего по категории: <b class="num">${tot.length ? fmtSums(tot) : z}</b>`;
+    nav.classList.add('filtered');
+  }
+  info.hidden = false;
+  reset.classList.toggle('ghosted', !activeFilter);
+}
+
+/* ================= отрисовка ================= */
+function render(){
+  if (activeFilter === '__uncat' && !itemsOf(null).length) activeFilter = '';
+  if (activeFilter && activeFilter !== '__uncat' && !state.categories.some(c => c.id === activeFilter)) activeFilter = '';
+  renderSummary();
+  ddCatAdd.setOptions(catOptions(), formCategoryChoice != null ? formCategoryChoice : undefined);
+  ddCatEdit.setOptions(catOptions());
+  ddCatNav.setOptions(catNavOptions());
+  if (ddCatNav.getValue() !== activeFilter) ddCatNav.setValue(activeFilter);
+  formCategoryChoice = null;
+  renderCats();
+  updateFilterUI();
+}
+
+function renderSummary(){
+  const total  = perCurrency(state.items);
+  const left   = perCurrency(state.items.filter(i => !i.bought));
+  const bought = perCurrency(state.items.filter(i => i.bought));
+  $('#sumTotal').textContent   = total.length   ? fmtSums(total)   : '0 ' + SYM.UAH;
+  $('#sumLeft').textContent   = left.length   ? fmtSums(left)   : '0 ' + SYM.UAH;
+  $('#sumBought').textContent = bought.length ? fmtSums(bought) : '0 ' + SYM.UAH;
+  const n = state.items.length, b = state.items.filter(i => i.bought).length;
+  $('#sumCount').textContent = n
+    ? `${n} ${plural(n, ['позиция','позиции','позиций'])} · куплено ${b}`
+    : 'пока нет товаров';
+
+  const chips = [];
+  const chipOf = (name, color, kids, fid) => {
+    if (!kids.length) return '';
+    const s = perCurrency(kids.filter(i => !i.bought));
+    const act = activeFilter && activeFilter === fid ? ' active' : '';
+    return `<span class="chip${act}" style="--c:${color}"><span class="dot"></span>${esc(name)}&nbsp;<b class="num">${s.length ? fmtSums(s) : '0 ' + SYM.UAH}</b></span>`;
+  };
+  for (const c of state.categories) chips.push(chipOf(c.name, c.color, itemsOf(c.id), c.id));
+  chips.push(chipOf('Без категории', '#98a1ad', itemsOf(null), '__uncat'));
+  const html = chips.filter(Boolean).join('');
+  $('#sumChips').innerHTML = html || '<span class="chips-hint">Добавьте категории и товары — здесь появится разбивка по каждой категории.</span>';
+}
+
+function itemRow(it){
+  const url = it.url || '';
+  const isHttp = /^https?:\/\//i.test(url);
+  const link = !url ? '' :
+    isHttp
+      ? `<a class="link-btn" href="${esc(url)}" target="_blank" rel="noopener noreferrer" title="${esc(url)}">Открыть ↗</a>`
+      : `<span class="link-btn dead" title="Некорректная ссылка">Открыть ↗</span>`;
+  return `<div class="item${it.bought ? ' bought' : ''}${it.id === lastAddedId ? ' new' : ''}" data-id="${it.id}">
+    <input type="checkbox" data-act="toggle" ${it.bought ? 'checked' : ''} aria-label="Куплено">
+    <div class="name">${esc(it.name)}</div>
+    ${link}
+    <div class="price" title="Цена">${fmtPrice(it)}</div>
+    <button class="icon-btn" data-act="edit" title="Редактировать" aria-label="Редактировать">${SVG_EDIT}</button>
+    <button class="icon-btn del" data-act="del" title="Удалить" aria-label="Удалить">${SVG_TRASH}</button>
+  </div>`;
+}
+
+function renderCats(){
+  const box = $('#categories');
+
+  if (!state.categories.length && !itemsOf(null).length){
+    box.innerHTML = `<div class="card hero">
+      <h2>Начните с категории 🗂️</h2>
+      <p>Создайте первую категорию — например, одну из этих (в один клик):</p>
+      <div class="chips-suggest">${SUGGEST.map(s =>
+        `<button type="button" class="btn ghost pill" data-suggest="${esc(s)}">＋ ${esc(s)}</button>`).join('')}</div>
+    </div>`;
+    return;
+  }
+
+  let html = '';
+  const match = id => !activeFilter || (activeFilter === '__uncat' ? id === null : id === activeFilter);
+  const section = (id, name, color, locked, kids = itemsOf(id)) => {
+    const rem  = perCurrency(kids.filter(i => !i.bought));
+    const bgt  = perCurrency(kids.filter(i =>  i.bought));
+    const remTxt = rem.length ? fmtSums(rem) : '0 ' + SYM.UAH;
+    const allBought = kids.length > 0 && kids.every(i => i.bought);
+    const badge = kids.length
+      ? `<span class="rem-badge num${allBought ? ' done' : ''}" title="Сумма некупленных товаров категории">${allBought ? '✓ ' : ''}${esc(remTxt)}</span>`
+      : '';
+    let meta = `${kids.length} ${plural(kids.length, ['позиция','позиции','позиций'])}`;
+    if (bgt.length)  meta += ` · <span class="ok">куплено ${fmtSums(bgt)}</span>`;
+    const manage = locked ? '' :
+      `<button class="icon-btn" data-act="renameCat" data-id="${esc(id)}" title="Переименовать категорию" aria-label="Переименовать категорию">${SVG_EDIT}</button>
+       <button class="icon-btn del" data-act="delCat" data-id="${esc(id)}" title="Удалить категорию" aria-label="Удалить категорию">${SVG_TRASH}</button>`;
+    html += `<section class="card cat" data-id="${esc(id)}">
+      <header class="cat-head" style="--c:${color}">
+        <span class="dot"></span>
+        <h2>${esc(name)}</h2>
+        ${badge}
+        <span class="meta num">${meta}</span>
+        <span class="grow"></span>
+        ${manage}
+      </header>
+      ${kids.length ? kids.map(itemRow).join('') : '<div class="empty">Пока нет товаров — добавьте через форму выше.</div>'}
+    </section>`;
+  };
+
+  for (const c of state.categories) if (match(c.id)) section(c.id, c.name, c.color, false);
+  if (itemsOf(null).length && match(null)) section('__uncat', 'Без категории', '#98a1ad', true, itemsOf(null));
+  box.innerHTML = html;
+}
+
+/* ================= модалки ================= */
+function openModal(id){
+  $('#' + id).classList.add('open');
+  const f = $('#' + id).querySelector('input, select');
+  if (f) setTimeout(() => f.focus(), 40);
+}
+function closeModal(id){ $('#' + id).classList.remove('open'); }
+
+$$('.overlay').forEach(ov => ov.addEventListener('click', e => {
+  if (e.target !== ov) return;
+  if (ov.id === 'confirmModal' && confirmResolve){ confirmResolve(null); confirmResolve = null; }
+  ov.classList.remove('open');
+}));
+$$('[data-close]').forEach(b => b.addEventListener('click', () => b.closest('.overlay').classList.remove('open')));
+document.addEventListener('click', e => {
+  if (!e.target.closest('.dd')) Dropdown.closeAll();
+});
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  if (Dropdown.closeAnyOpen()) return;
+  const open = $$('.overlay.open').pop();
+  if (!open) return;
+  if (open.id === 'confirmModal' && confirmResolve){ confirmResolve(null); confirmResolve = null; }
+  open.classList.remove('open');
+});
+
+/* --- подтверждение (универсальное) --- */
+let confirmResolve = null;
+function confirmBox({ title, message = '', buttons }){
+  const btns = buttons || [
+    { label: 'Удалить', kind: 'danger',  value: true  },
+    { label: 'Отмена',  kind: 'ghost',   value: false }
+  ];
+  return new Promise(res => {
+    confirmResolve = res;
+    $('#confirmTitle').textContent = title;
+    const m = $('#confirmMsg');
+    m.textContent = message; m.style.display = message ? '' : 'none';
+    const box = $('#confirmBtns'); box.innerHTML = '';
+    for (const b of btns){
+      const el = document.createElement('button');
+      el.type = 'button';
+      el.className = 'btn ' + b.kind;
+      el.textContent = b.label;
+      el.addEventListener('click', () => {
+        closeModal('confirmModal');
+        confirmResolve = null; res(b.value);
+      });
+      box.appendChild(el);
+    }
+    openModal('confirmModal');
+  });
+}
+
+/* --- модалка товара --- */
+let editId = null;
+function openItemModal(id){
+  const it = state.items.find(i => i.id === id);
+  if (!it) return;
+  editId = id;
+  $('#mName').value = it.name;
+  $('#mPrice').value = it.price == null ? '' : it.price;
+  ddCurEdit.setValue(SYM[it.currency] ? it.currency : 'UAH');
+  ddCatEdit.setValue(it.categoryId || '');
+  $('#mUrl').value = it.url || '';
+  openModal('itemModal');
+}
+$('#itemForm').addEventListener('submit', e => {
+  e.preventDefault();
+  const it = state.items.find(i => i.id === editId);
+  if (!it) return;
+  const name = $('#mName').value.trim();
+  if (!name){ $('#mName').focus(); return; }
+  const raw = $('#mPrice').value.trim();
+  let price = raw === '' ? null : parseFloat(raw);
+  if (price != null && (!isFinite(price) || price < 0)) price = null;
+  it.name = name;
+  it.price = price;
+  it.currency = ddCurEdit.getValue();
+  it.url = normalizeUrl($('#mUrl').value);
+  it.categoryId = ddCatEdit.getValue() || null;
+  save(); closeModal('itemModal'); render();
+});
+
+/* --- модалка категории --- */
+let catModalMode = null; // {mode:'create'} | {mode:'rename', id}
+function openCatModal(mode){
+  catModalMode = mode;
+  const renaming = mode.mode === 'rename';
+  $('#cTitle').textContent = renaming ? 'Переименовать категорию' : 'Новая категория';
+  $('#cSave').textContent  = renaming ? 'Сохранить' : 'Создать';
+  $('#cName').value = renaming ? state.categories.find(c => c.id === mode.id)?.name || '' : '';
+  openModal('catModal');
+}
+$('#catForm').addEventListener('submit', e => {
+  e.preventDefault();
+  const name = $('#cName').value.trim();
+  if (!name){ $('#cName').focus(); return; }
+  if (catModalMode?.mode === 'rename'){
+    const c = state.categories.find(c => c.id === catModalMode.id);
+    if (c) c.name = name;
+  } else {
+    const c = { id: uid(), name, color: PALETTE[state.categories.length % PALETTE.length], created: Date.now() };
+    state.categories.push(c);
+    formCategoryChoice = c.id; // сразу выберем в форме добавления
+  }
+  save(); closeModal('catModal'); render();
+});
+$('#newCatBtn').addEventListener('click', () => openCatModal({ mode: 'create' }));
+
+/* ================= действия над товарами ================= */
+async function deleteItem(id){
+  const it = state.items.find(i => i.id === id);
+  if (!it) return;
+  const ok = await confirmBox({ title: 'Удалить товар?', message: `«${it.name}» будет удалён безвозвратно.` });
+  if (ok){
+    state.items = state.items.filter(i => i.id !== id);
+    save(); render();
+  }
+}
+
+/* ================= действия над категориями ================= */
+async function deleteCategory(id){
+  const c = state.categories.find(c => c.id === id);
+  if (!c) return;
+  const kids = itemsOf(id);
+  if (!kids.length){
+    const ok = await confirmBox({ title: `Удалить категорию «${c.name}»?` });
+    if (ok){ state.categories = state.categories.filter(x => x.id !== id); save(); render(); }
+    return;
+  }
+  const v = await confirmBox({
+    title: `Удалить категорию «${c.name}»?`,
+    message: `В ней ${kids.length} ${plural(kids.length, ['товар','товара','товаров'])}. Что с ними сделать?`,
+    buttons: [
+      { label: `Удалить всё вместе (${kids.length})`,        kind: 'danger',  value: 'purge' },
+      { label: 'Перенести товары в «Без категории»',          kind: 'primary', value: 'move'  },
+      { label: 'Отмена',                                      kind: 'ghost',   value: null    }
+    ]
+  });
+  if (v === 'purge'){
+    state.items = state.items.filter(i => i.categoryId !== id);
+    state.categories = state.categories.filter(x => x.id !== id);
+    save(); render();
+  } else if (v === 'move'){
+    kids.forEach(i => { i.categoryId = null; });
+    state.categories = state.categories.filter(x => x.id !== id);
+    save(); render();
+  }
+}
+
+/* ================= делегирование кликов ================= */
+$('#categories').addEventListener('click', e => {
+  const sug = e.target.closest('[data-suggest]');
+  if (sug){
+    const c = { id: uid(), name: sug.dataset.suggest, color: PALETTE[state.categories.length % PALETTE.length], created: Date.now() };
+    state.categories.push(c);
+    formCategoryChoice = c.id;
+    save(); render();
+    $('#fName').focus();
+    return;
+  }
+  const btn = e.target.closest('[data-act]');
+  if (!btn) return;
+  const act = btn.dataset.act;
+  if (act === 'edit')  openItemModal(btn.closest('.item').dataset.id);
+  if (act === 'del')   deleteItem(btn.closest('.item').dataset.id);
+  if (act === 'renameCat') openCatModal({ mode: 'rename', id: btn.dataset.id });
+  if (act === 'delCat')    deleteCategory(btn.dataset.id);
+});
+$('#categories').addEventListener('change', e => {
+  if (!e.target.matches('[data-act="toggle"]')) return;
+  const it = state.items.find(i => i.id === e.target.closest('.item').dataset.id);
+  if (!it) return;
+  it.bought = e.target.checked;
+  save(); render();
+});
+
+/* ================= форма добавления ================= */
+$('#addForm').addEventListener('submit', e => {
+  e.preventDefault();
+  const name = $('#fName').value.trim();
+  if (!name){ $('#fName').focus(); return; }
+  const raw = $('#fPrice').value.trim();
+  let price = raw === '' ? null : parseFloat(raw);
+  if (price != null && (!isFinite(price) || price < 0)) price = null;
+  const it = {
+    id: uid(), name, price,
+    currency: ddCurAdd.getValue(),
+    url: normalizeUrl($('#fUrl').value),
+    categoryId: ddCatAdd.getValue() || null,
+    bought: false, created: Date.now()
+  };
+  state.items.push(it);
+  lastAddedId = it.id;
+  const fVal = it.categoryId == null ? '__uncat' : it.categoryId;
+  if (activeFilter && activeFilter !== fVal) activeFilter = ''; // товар вне фильтра -> показать все
+  save(); render();
+  /* подсветка нового товара играется один раз; не переактивируем её при перерисовках */
+  setTimeout(() => { lastAddedId = null; }, 1500);
+  $('#fName').value = ''; $('#fPrice').value = ''; $('#fUrl').value = '';
+  $('#fName').focus();
+  const el = $(`.item[data-id="${it.id}"]`);
+  if (el && typeof el.scrollIntoView === 'function') el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+});
+
+/* ================= бэкап ================= */
+$('#exportBtn').addEventListener('click', () => {
+  const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'shopping-backup-' + new Date().toISOString().slice(0, 10) + '.json';
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 3000);
+});
+$('#importBtn').addEventListener('click', () => $('#importFile').click());
+$('#importFile').addEventListener('change', e => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  const r = new FileReader();
+  r.onload = async () => {
+    try {
+      const d = JSON.parse(r.result);
+      if (!Array.isArray(d.categories) || !Array.isArray(d.items)) throw new Error('bad');
+      const ok = await confirmBox({
+        title: 'Импортировать данные?',
+        message: `В файле: ${d.categories.length} ${plural(d.categories.length, ['категория','категории','категорий'])}, ${d.items.length} ${plural(d.items.length, ['товар','товара','товаров'])}. Текущие данные будут заменены.`,
+        buttons: [
+          { label: 'Заменить', kind: 'primary', value: true  },
+          { label: 'Отмена',   kind: 'ghost',   value: false }
+        ]
+      });
+      if (!ok) return;
+      const CURS = Object.keys(SYM);
+      state.categories = d.categories.map((c, i) => ({
+        id: String(c.id || uid()), name: String(c.name || 'Без названия'),
+        color: c.color || PALETTE[i % PALETTE.length], created: +c.created || Date.now()
+      }));
+      state.items = d.items.map(x => ({
+        id: String(x.id || uid()), name: String(x.name || ''),
+        price: (x.price == null || !isFinite(+x.price)) ? null : +x.price,
+        currency: CURS.includes(x.currency) ? x.currency : 'UAH',
+        url: String(x.url || ''), categoryId: x.categoryId ? String(x.categoryId) : null,
+        bought: !!x.bought, created: +x.created || Date.now()
+      }));
+      save(); render();
+    } catch(err){
+      alert('Не удалось прочитать файл: нужен JSON, экспортированный из этого приложения.');
+    }
+  };
+  r.readAsText(file);
+});
+$('#wipeBtn').addEventListener('click', async () => {
+  const ok = await confirmBox({
+    title: 'Очистить всё?',
+    message: 'Будут удалены все категории и товары. Сначала можно сделать экспорт в файл.',
+    buttons: [
+      { label: 'Очистить', kind: 'danger',  value: true  },
+      { label: 'Отмена',   kind: 'ghost',   value: false }
+    ]
+  });
+  if (ok){ state = { categories: [], items: [] }; save(); render(); }
+});
+
+/* ================= анимированный фон: полупрозрачные волны ================= */
+const BGFX = (() => {
+  const cv = document.getElementById('bgfx');
+  if (!cv) return { setTheme(){} };
+  const ctx = cv.getContext ? cv.getContext('2d') : null;
+  if (!ctx) return { setTheme(){} }; /* нет canvas-движка — просто пропускаем */
+  const reduceMotion = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let W = 0, H = 0, layers = [], raf = null, running = false, lastTs = 0, t = 0, dark = false;
+
+  /* палитры волн [r,g,b,alpha]: светлый фон — заметнее, тёмный — приглушённее */
+  const palette = () => dark ? [
+    [123, 147, 255, .09],
+    [ 61, 214, 140, .055],
+    [  0, 162, 199, .075],
+    [214,  64, 159, .05]
+  ] : [
+    [ 91, 124, 250, .16],
+    [ 34, 160, 107, .11],
+    [  0, 162, 199, .14],
+    [214,  64, 159, .08]
+  ];
+
+  function resize(){
+    W = window.innerWidth; H = window.innerHeight;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    layers = [
+      { baseY: .60, amp: 26, wl: 540, sp: .050, amp2: 16, wl2: 240, sp2: .085 },
+      { baseY: .70, amp: 34, wl: 660, sp: .034, amp2: 20, wl2: 300, sp2: .060 },
+      { baseY: .81, amp: 30, wl: 470, sp: .062, amp2: 15, wl2: 215, sp2: .090 },
+      { baseY: .92, amp: 26, wl: 580, sp: .042, amp2: 18, wl2: 265, sp2: .065 }
+    ];
+  }
+  function draw(){
+    ctx.clearRect(0, 0, W, H);
+    const cols = palette();
+    for (let i = 0; i < layers.length; i++){
+      const L = layers[i];
+      const [r, g, b, a] = cols[i % cols.length];
+      const ph  = t * L.sp  * Math.PI * 2;
+      const ph2 = t * L.sp2 * Math.PI * 2 + i * 1.7;
+      const grad = ctx.createLinearGradient(0, L.baseY * H - L.amp - L.amp2, 0, H);
+      grad.addColorStop(0, `rgba(${r},${g},${b},${a})`);
+      grad.addColorStop(1, `rgba(${r},${g},${b},0)`);
+      ctx.beginPath();
+      ctx.moveTo(0, H);
+      for (let x = 0; x <= W + 10; x += 10){
+        const y = L.baseY * H
+          + Math.sin((x / L.wl)  * Math.PI * 2 + ph)  * L.amp
+          + Math.sin((x / L.wl2) * Math.PI * 2 + ph2) * L.amp2;
+        ctx.lineTo(x, y);
+      }
+      ctx.lineTo(W, H);
+      ctx.closePath();
+      ctx.fillStyle = grad;
+      ctx.fill();
+    }
+  }
+  function frame(ts){
+    if (!running) return;
+    const dt = Math.min((ts - lastTs) / 1000, 0.05);
+    lastTs = ts; t += dt;
+    draw();
+    raf = requestAnimationFrame(frame);
+  }
+  function start(){
+    resize();
+    if (reduceMotion){ t = 12; draw(); return; } /* статичные волны без анимации */
+    if (running) return;
+    running = true;
+    lastTs = performance.now();
+    raf = requestAnimationFrame(frame);
+  }
+  window.addEventListener('resize', () => { resize(); if (!running) draw(); });
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden){ if (raf) cancelAnimationFrame(raf); raf = null; running = false; }
+    else if (!reduceMotion){ running = true; lastTs = performance.now(); raf = requestAnimationFrame(frame); }
+  });
+  return { setTheme(th){ dark = th === 'dark'; start(); } };
+})();
+
+/* ================= тема ================= */
+function applyTheme(t){
+  document.documentElement.dataset.theme = t;
+  $('#themeBtn').textContent = t === 'dark' ? '☀️' : '🌙';
+  BGFX.setTheme(t);
+  try { store.setItem('shoplist.theme', t); } catch(e){}
+}
+$('#themeBtn').addEventListener('click', () =>
+  applyTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'));
+
+/* ================= старт ================= */
+load();
+applyTheme(document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light');
+render();
+</script>
+<script>(function(){function c(){var b=a.contentDocument||(a.contentWindow&&a.contentWindow.document);if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a4797a4408c2ee45',t:'MTc5MTUwNzkzMg=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+</html>
