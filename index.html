@@ -76,28 +76,26 @@ b,strong{font-weight:600}
 .divider{height:1px; background:var(--border); margin:14px 0 12px}
 .chips{display:flex; flex-wrap:wrap; gap:8px}
 .chip{display:inline-flex; align-items:center; gap:7px; padding:5px 11px; border-radius:999px;
-  background:var(--accent-weak); font-size:13px; color:var(--text)}
+  background:var(--accent-weak); font-size:13px; color:var(--text);
+  border:1px solid transparent; font-family:inherit; cursor:pointer;
+  transition:border-color .15s, box-shadow .15s, transform .06s}
+.chip:hover{border-color:var(--accent)}
+.chip:active{transform:scale(.97)}
 .chip .dot{width:8px; height:8px; border-radius:50%; background:var(--c, var(--accent)); flex-shrink:0}
 .chip b{font-weight:650}
+.chip .x{display:none; margin-left:1px; opacity:.75; font-size:12px}
+.chip.active{border-color:var(--accent); box-shadow:inset 0 0 0 1px var(--accent)}
+.chip.active .x{display:inline}
 .chips-hint{color:var(--muted); font-size:13px}
-/* ============ навигация по категориям ============ */
-.catnav{display:flex; align-items:center; gap:12px; padding:12px 16px; margin-bottom:14px}
-.catnav-lbl{font-size:11.5px; font-weight:700; letter-spacing:.08em; text-transform:uppercase;
-  color:var(--muted); white-space:nowrap}
-.catnav .dd{flex:1; min-width:0; max-width:340px; margin-left:auto}
 .dd-hint{margin-left:auto; padding-left:14px; color:var(--muted); font-size:12.5px;
   font-variant-numeric:tabular-nums; white-space:nowrap}
 .dd-opt .chk{margin-left:2px}
-.catnav{flex-wrap:wrap}
-.catnav.filtered{border-color:var(--accent)}
-.filter-reset{margin-left:auto; border:1px solid var(--border); background:transparent; color:var(--muted);
-  border-radius:999px; padding:5px 13px; font-size:12.5px; font-weight:600; cursor:pointer; transition:all .15s}
-.filter-reset:hover{color:var(--danger); border-color:var(--danger)}
-.filter-reset.ghosted{visibility:hidden; pointer-events:none} /* место резервируется — панель не «плавает» */
-.filter-info{flex:1 1 100%; display:flex; align-items:center; gap:6px; flex-wrap:wrap;
-  padding-top:10px; border-top:1px dashed var(--border); color:var(--muted); font-size:13px}
-.filter-info[hidden]{display:none}
+/* строка статуса фильтра под чипами */
+.filter-info{display:flex; align-items:center; gap:6px; flex-wrap:wrap;
+  margin-top:12px; padding-top:12px; border-top:1px dashed var(--border);
+  color:var(--muted); font-size:13px}
 .filter-info b{color:var(--text); font-weight:650}
+.filter-info .linkish{padding:0 2px}
 .rem-badge{display:inline-flex; align-items:center; padding:3px 11px; border-radius:999px;
   background:var(--accent-weak); color:var(--accent); font-size:13px; font-weight:700;
   white-space:nowrap; font-variant-numeric:tabular-nums}
@@ -264,15 +262,8 @@ b,strong{font-weight:600}
     </div>
     <div class="divider"></div>
     <div class="chips" id="sumChips"></div>
-  </section>
-
-  <!-- ======== навигация по категориям ======== -->
-  <nav class="card catnav" aria-label="Фильтр по категориям">
-    <span class="catnav-lbl">Категория</span>
-    <div class="dd" id="ddCatNav"></div>
-    <button type="button" class="filter-reset ghosted" id="filterReset">Сбросить ✕</button>
     <div class="filter-info" id="filterInfo"></div>
-  </nav>
+  </section>
 
   <!-- ======== форма добавления ======== -->
   <section class="card form-card" aria-label="Добавить товар">
@@ -455,20 +446,6 @@ const catOptions = () => [
   ...state.categories.map(c => ({ value: c.id, label: c.name, dot: c.color }))
 ];
 
-/* опции навигации: «Все категории» + сумма остатка по каждой */
-const catSum = id => {
-  const s = perCurrency(itemsOf(id).filter(i => !i.bought));
-  return s.length ? fmtSums(s) : '0 ' + SYM.UAH;
-};
-const catNavOptions = () => {
-  const opts = [{ value: '', label: 'Все категории' }];
-  for (const c of state.categories)
-    opts.push({ value: c.id, label: c.name, dot: c.color, hint: catSum(c.id) });
-  if (itemsOf(null).length)
-    opts.push({ value: '__uncat', label: 'Без категории', dot: '#98a1ad', hint: catSum(null) });
-  return opts;
-};
-
 class Dropdown {
   static all = [];
   static closeAll(except){ for (const d of Dropdown.all){ if (d !== except) d.close(); } }
@@ -604,40 +581,33 @@ const ddCurAdd  = new Dropdown($('#ddCurAdd'),  { options: CUR_OPTIONS, value: '
 const ddCurEdit = new Dropdown($('#ddCurEdit'), { options: CUR_OPTIONS, value: 'UAH', alignRight: true, ariaLabel: 'Валюта' });
 const ddCatAdd  = new Dropdown($('#ddCatAdd'),  { options: catOptions(), value: '', ariaLabel: 'Категория' });
 const ddCatEdit = new Dropdown($('#ddCatEdit'), { options: catOptions(), value: '', ariaLabel: 'Категория' });
-const ddCatNav  = new Dropdown($('#ddCatNav'),  { options: catNavOptions(), value: '', ariaLabel: 'Фильтр по категориям' });
-
-/* фильтр: показывать только выбранную категорию */
-ddCatNav.onChange = v => {
-  const nv = v || '';
-  if (activeFilter === nv) return;
-  activeFilter = nv;
+/* клик по чипу категории = фильтр (повторный клик — сброс) */
+$('#sumChips').addEventListener('click', e => {
+  const chip = e.target.closest('[data-filter]');
+  if (!chip) return;
+  const f = chip.dataset.filter;
+  activeFilter = activeFilter === f ? '' : f;
   render();
-};
-$('#filterReset').addEventListener('click', () => { activeFilter = ''; render(); });
+});
 
-/* строка-инфо в панели: всегда на месте, панель не меняет размер */
+/* строка статуса под чипами: что сейчас показано и суммы */
 function updateFilterUI(){
-  const nav = document.querySelector('.catnav'), info = $('#filterInfo'), reset = $('#filterReset');
+  const info = $('#filterInfo');
   const z = '0 ' + SYM.UAH;
-  let kids;
   if (!activeFilter){
-    kids = state.items;
-    const rem = perCurrency(kids.filter(i => !i.bought));
-    const tot = perCurrency(kids);
+    const rem = perCurrency(state.items.filter(i => !i.bought));
+    const tot = perCurrency(state.items);
     info.innerHTML = `Показаны <b>все категории</b>&nbsp; · &nbsp;осталось: <b class="num">${rem.length ? fmtSums(rem) : z}</b>&nbsp; · &nbsp;всего: <b class="num">${tot.length ? fmtSums(tot) : z}</b>`;
-    nav.classList.remove('filtered');
   } else {
     const id = activeFilter === '__uncat' ? null : activeFilter;
     const cat = id === null ? null : state.categories.find(x => x.id === id);
     const name = id === null ? 'Без категории' : (cat ? cat.name : '');
-    kids = itemsOf(id);
+    const kids = itemsOf(id);
     const rem = perCurrency(kids.filter(i => !i.bought));
     const tot = perCurrency(kids);
-    info.innerHTML = `Показана только <b>«${esc(name)}»</b>&nbsp; · &nbsp;осталось: <b class="num">${rem.length ? fmtSums(rem) : z}</b>&nbsp; · &nbsp;всего по категории: <b class="num">${tot.length ? fmtSums(tot) : z}</b>`;
-    nav.classList.add('filtered');
+    info.innerHTML = `Показана только <b>«${esc(name)}»</b>&nbsp; · &nbsp;осталось: <b class="num">${rem.length ? fmtSums(rem) : z}</b>&nbsp; · &nbsp;всего по категории: <b class="num">${tot.length ? fmtSums(tot) : z}</b>&nbsp; · &nbsp;<button type="button" class="linkish" id="filterReset">сбросить ✕</button>`;
+    $('#filterReset').addEventListener('click', () => { activeFilter = ''; render(); });
   }
-  info.hidden = false;
-  reset.classList.toggle('ghosted', !activeFilter);
 }
 
 /* ================= отрисовка ================= */
@@ -647,8 +617,6 @@ function render(){
   renderSummary();
   ddCatAdd.setOptions(catOptions(), formCategoryChoice != null ? formCategoryChoice : undefined);
   ddCatEdit.setOptions(catOptions());
-  ddCatNav.setOptions(catNavOptions());
-  if (ddCatNav.getValue() !== activeFilter) ddCatNav.setValue(activeFilter);
   formCategoryChoice = null;
   renderCats();
   updateFilterUI();
@@ -670,8 +638,8 @@ function renderSummary(){
   const chipOf = (name, color, kids, fid) => {
     if (!kids.length) return '';
     const s = perCurrency(kids.filter(i => !i.bought));
-    const act = activeFilter && activeFilter === fid ? ' active' : '';
-    return `<span class="chip${act}" style="--c:${color}"><span class="dot"></span>${esc(name)}&nbsp;<b class="num">${s.length ? fmtSums(s) : '0 ' + SYM.UAH}</b></span>`;
+    const act = !!fid && activeFilter === fid;
+    return `<button type="button" class="chip${act ? ' active' : ''}" style="--c:${color}" data-filter="${esc(fid)}" aria-pressed="${act}" title="${act ? 'Показать все категории' : 'Показать только эту категорию'}"><span class="dot"></span>${esc(name)}&nbsp;<b class="num">${s.length ? fmtSums(s) : '0 ' + SYM.UAH}</b>${act ? '<span class="x">✕</span>' : ''}</button>`;
   };
   for (const c of state.categories) chips.push(chipOf(c.name, c.color, itemsOf(c.id), c.id));
   chips.push(chipOf('Без категории', '#98a1ad', itemsOf(null), '__uncat'));
@@ -1104,5 +1072,6 @@ load();
 applyTheme(document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light');
 render();
 </script>
-<script>(function(){function c(){var b=a.contentDocument||(a.contentWindow&&a.contentWindow.document);if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a4797a4408c2ee45',t:'MTc5MTUwNzkzMg=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/v4bc70e2c01a94c73b74392e4234840661791215815920" integrity="sha512-L0ha0OXavK/8okipN9F8BtP84dg9DUhPERbBXzwI6dgTA55d2+yweo3pn5CSFYs45/r8md2+xvUPtTdvTNRfjA==" data-cf-beacon='{"version":"2024.11.0","token":"1954b47c125f43f8b4338b3c4f804e4f","spa":2}' crossorigin="anonymous"></script>
+<script>(function(){function c(){var b=a.contentDocument||(a.contentWindow&&a.contentWindow.document);if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a479d6cc7efbb607',t:'MTc5MTUxMTcyMg=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
 </html>
