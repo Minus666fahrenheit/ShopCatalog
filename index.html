@@ -90,12 +90,56 @@ b,strong{font-weight:600}
 .dd-hint{margin-left:auto; padding-left:14px; color:var(--muted); font-size:12.5px;
   font-variant-numeric:tabular-nums; white-space:nowrap}
 .dd-opt .chk{margin-left:2px}
-/* строка статуса фильтра под чипами */
-.filter-info{display:flex; align-items:center; gap:6px; flex-wrap:wrap;
-  margin-top:12px; padding-top:12px; border-top:1px dashed var(--border);
-  color:var(--muted); font-size:13px}
-.filter-info b{color:var(--text); font-weight:650}
 .filter-info .linkish{padding:0 2px}
+/* ============ плавающие заметки по категориям ============ */
+.notes-fab{
+  position:fixed; right:18px; bottom:18px; z-index:46;
+  width:54px; height:54px; border-radius:50%; border:none; cursor:pointer;
+  background:var(--accent); color:var(--on-accent); font-size:22px; line-height:1;
+  display:grid; place-items:center; box-shadow:0 6px 20px rgba(16,24,40,.28);
+  transition:transform .15s, filter .15s;
+}
+.notes-fab:hover{transform:scale(1.06); filter:brightness(1.06)}
+.notes-fab:active{transform:scale(.97)}
+.np-badge{position:absolute; top:-4px; right:-4px; min-width:19px; height:19px; padding:0 5px;
+  border-radius:999px; background:var(--danger); color:#fff; font-size:11px; font-weight:700;
+  display:grid; place-items:center; border:2px solid var(--bg)}
+.np-badge[hidden]{display:none}
+.notes-panel{
+  position:fixed; right:18px; bottom:82px; z-index:46;
+  width:min(380px, calc(100vw - 28px)); max-height:min(62vh, 540px);
+  display:flex; flex-direction:column; overflow:hidden; animation:npop .16s ease;
+}
+@keyframes npop{from{opacity:0; transform:translateY(8px)}}
+.notes-panel[hidden]{display:none}
+.np-top{display:flex; align-items:center; justify-content:space-between; gap:10px;
+  padding:12px 14px 10px 16px; border-bottom:1px solid var(--border)}
+.np-top b{font-size:14.5px}
+.np-sub{padding:8px 16px 0; color:var(--muted); font-size:12px}
+#notesList{overflow:auto; overscroll-behavior:contain; padding:6px 8px 10px}
+.np-row{padding:8px 8px 9px; border-radius:10px}
+.np-row + .np-row{border-top:1px solid var(--border); border-top-left-radius:0; border-top-right-radius:0}
+.np-row.active{background:var(--accent-weak)}
+.np-head{display:flex; align-items:center; gap:9px}
+.np-head .dot{width:9px; height:9px; border-radius:50%; background:var(--c,var(--accent)); flex-shrink:0}
+.np-name{flex:1; min-width:0; font-weight:650; font-size:14px; white-space:nowrap;
+  overflow:hidden; text-overflow:ellipsis}
+.np-note{margin-top:5px; padding:7px 10px; border-radius:8px; background:var(--hover);
+  color:var(--text); font-size:13px; white-space:pre-line; word-break:break-word}
+.np-none{margin-top:4px; color:var(--muted); font-size:12.5px; font-style:italic}
+.np-ta{margin-top:6px; resize:vertical; min-height:64px; font-family:inherit; line-height:1.4}
+.np-actions{display:flex; gap:8px; margin-top:8px}
+.np-actions .btn{padding:7px 14px; font-size:13px}
+.np-empty{padding:16px; color:var(--muted); font-size:13.5px; text-align:center}
+/* заметка в секции категории */
+.cat-note{display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
+  padding:0 18px 11px; margin-top:-3px; color:var(--muted); font-size:12.5px;
+  word-break:break-word; white-space:pre-line}
+@media (max-width:680px){
+  .notes-fab{right:14px; bottom:14px; width:50px; height:50px}
+  .notes-panel{right:14px; bottom:74px}
+  .cat-note{white-space:normal; display:block}
+}
 .rem-badge{display:inline-flex; align-items:center; padding:3px 11px; border-radius:999px;
   background:var(--accent-weak); color:var(--accent); font-size:13px; font-weight:700;
   white-space:nowrap; font-variant-numeric:tabular-nums}
@@ -317,6 +361,16 @@ b,strong{font-weight:600}
     <button class="linkish warn" id="wipeBtn" type="button">Очистить всё</button>
   </footer>
   <input type="file" id="importFile" accept="application/json,.json" hidden>
+
+  <!-- ======== плавающие заметки по категориям ======== -->
+  <div class="card notes-panel" id="notesPanel" role="dialog" aria-label="Заметки по категориям" hidden>
+    <div class="np-top">
+      <b>📝 Заметки по категориям</b>
+      <button type="button" class="icon-btn" id="notesClose" aria-label="Закрыть панель">✕</button>
+    </div>
+    <div id="notesList"></div>
+  </div>
+  <button type="button" class="notes-fab" id="notesBtn" aria-expanded="false" aria-controls="notesPanel" title="Заметки по категориям">📝<span class="np-badge num" id="npBadge" hidden></span></button>
 </div>
 
 <!-- ======== модалка: товар ======== -->
@@ -413,6 +467,7 @@ function plural(n, forms){
   return forms[2];
 }
 const oneLine = v => String(v || '').replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 300);
+const sanitizeNote = v => String(v || '').replace(/\r/g, '').replace(/\n{3,}/g, '\n\n').trim().slice(0, 500);
 function normalizeUrl(u){
   u = (u || '').trim();
   if (!u) return '';
@@ -427,6 +482,8 @@ let state = { categories: [], items: [] };
 let lastAddedId = null;
 let formCategoryChoice = null; // id категории, которую нужно выбрать в форме после рендера
 let activeFilter = '';         // '' | id категории | '__uncat' — фильтр отображения
+let editingNoteId = null;      // какая заметка сейчас открыта на редактирование в панели
+let noteDraft = '';            // черновик редактируемой заметки
 
 function save(){ store.setItem(LS_KEY, JSON.stringify(state)); }
 function load(){
@@ -634,6 +691,7 @@ function render(){
   formCategoryChoice = null;
   renderCats();
   updateFilterUI();
+  renderNotesPanel();
 }
 
 function renderSummary(){
@@ -707,6 +765,7 @@ function renderCats(){
     const manage = locked ? '' :
       `<button class="icon-btn" data-act="renameCat" data-id="${esc(id)}" title="Переименовать категорию" aria-label="Переименовать категорию">${SVG_EDIT}</button>
        <button class="icon-btn del" data-act="delCat" data-id="${esc(id)}" title="Удалить категорию" aria-label="Удалить категорию">${SVG_TRASH}</button>`;
+    const note = locked ? '' : (state.categories.find(x => x.id === id)?.note || '');
     html += `<section class="card cat" data-id="${esc(id)}">
       <header class="cat-head" style="--c:${color}">
         <span class="dot"></span>
@@ -716,6 +775,7 @@ function renderCats(){
         <span class="grow"></span>
         ${manage}
       </header>
+      ${note ? `<div class="cat-note" title="${esc(note)}">📝 ${esc(note)}</div>` : ''}
       ${kids.length ? kids.map(itemRow).join('') : '<div class="empty">Пока нет товаров — добавьте через форму выше.</div>'}
     </section>`;
   };
@@ -745,6 +805,8 @@ document.addEventListener('click', e => {
 document.addEventListener('keydown', e => {
   if (e.key !== 'Escape') return;
   if (Dropdown.closeAnyOpen()) return;
+  const np = $('#notesPanel');
+  if (np && !np.hidden){ closeNotesPanel(); return; }
   const open = $$('.overlay.open').pop();
   if (!open) return;
   if (open.id === 'confirmModal' && confirmResolve){ confirmResolve(null); confirmResolve = null; }
@@ -836,6 +898,85 @@ $('#catForm').addEventListener('submit', e => {
   save(); closeModal('catModal'); render();
 });
 $('#newCatBtn').addEventListener('click', () => openCatModal({ mode: 'create' }));
+
+/* ================= панель заметок по категориям ================= */
+function renderNotesPanel(){
+  const list = $('#notesList'), badge = $('#npBadge');
+  const cats = state.categories;
+  const withNotes = cats.filter(c => c.note);
+  badge.hidden = !withNotes.length;
+  badge.textContent = String(withNotes.length);
+  if (editingNoteId && !cats.some(c => c.id === editingNoteId)) editingNoteId = null;
+  if (!cats.length){
+    list.innerHTML = '<div class="np-empty">Создайте категорию — и можно добавлять к ней заметку.</div>';
+    return;
+  }
+  list.innerHTML = cats.map(c => {
+    const isEdit = editingNoteId === c.id;
+    return `<div class="np-row${activeFilter === c.id ? ' active' : ''}" data-id="${esc(c.id)}">
+      <div class="np-head">
+        <span class="dot" style="--c:${c.color}"></span>
+        <span class="np-name">${esc(c.name)}</span>
+        <button type="button" class="icon-btn" data-np="edit" title="${c.note ? 'Изменить заметку' : 'Добавить заметку'}" aria-label="Заметка: ${esc(c.name)}">${SVG_EDIT}</button>
+      </div>
+      ${isEdit
+        ? `<textarea class="inp np-ta" data-np="ta" maxlength="500" rows="3" placeholder="Заметка по категории… (до 500 символов)">${esc(noteDraft)}</textarea>
+           <div class="np-actions">
+             <button type="button" class="btn primary" data-np="save">Сохранить</button>
+             <button type="button" class="btn ghost" data-np="cancel">Отмена</button>
+           </div>`
+        : (c.note
+            ? `<div class="np-note">${esc(c.note)}</div>`
+            : '<div class="np-none">Заметки нет</div>')}
+    </div>`;
+  }).join('');
+}
+function openNotesPanel(){
+  $('#notesPanel').hidden = false;
+  $('#notesBtn').setAttribute('aria-expanded', 'true');
+  renderNotesPanel();
+}
+function closeNotesPanel(){
+  $('#notesPanel').hidden = true;
+  $('#notesBtn').setAttribute('aria-expanded', 'false');
+  editingNoteId = null;
+}
+$('#notesBtn').addEventListener('click', () => $('#notesPanel').hidden ? openNotesPanel() : closeNotesPanel());
+$('#notesClose').addEventListener('click', closeNotesPanel);
+
+$('#notesList').addEventListener('click', e => {
+  const btn = e.target.closest('[data-np]');
+  if (!btn) return;
+  const row = btn.closest('.np-row');
+  const cat = state.categories.find(c => c.id === row?.dataset.id);
+  if (!cat) return;
+  const act = btn.dataset.np;
+  if (act === 'edit'){
+    editingNoteId = cat.id;
+    noteDraft = cat.note || '';
+    renderNotesPanel();
+    const ta = $(`#notesList .np-row[data-id="${cat.id}"] textarea`);
+    if (ta){ ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
+  } else if (act === 'save'){
+    cat.note = sanitizeNote($(`#notesList .np-row[data-id="${cat.id}"] textarea`)?.value);
+    editingNoteId = null; noteDraft = '';
+    save(); render();
+  } else if (act === 'cancel'){
+    editingNoteId = null; noteDraft = '';
+    renderNotesPanel();
+  }
+});
+$('#notesList').addEventListener('input', e => {
+  if (e.target.matches('[data-np="ta"]')) noteDraft = e.target.value;
+});
+$('#notesList').addEventListener('keydown', e => {
+  if (!e.target.matches('[data-np="ta"]')) return;
+  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)){
+    e.preventDefault();
+    $(`#notesList .np-row[data-id="${editingNoteId}"] [data-np="save"]`)?.click();
+  }
+  if (e.key === 'Escape'){ e.preventDefault(); e.stopPropagation(); $('#notesList [data-np="cancel"]')?.click(); }
+});
 
 /* ================= действия над товарами ================= */
 async function deleteItem(id){
@@ -974,7 +1115,8 @@ $('#importFile').addEventListener('change', e => {
       const CURS = Object.keys(SYM);
       state.categories = d.categories.map((c, i) => ({
         id: String(c.id || uid()), name: String(c.name || 'Без названия'),
-        color: c.color || PALETTE[i % PALETTE.length], created: +c.created || Date.now()
+        color: c.color || PALETTE[i % PALETTE.length], created: +c.created || Date.now(),
+        note: typeof c.note === 'string' ? sanitizeNote(c.note) : ''
       }));
       state.items = d.items.map(x => ({
         id: String(x.id || uid()), name: String(x.name || ''),
@@ -1100,6 +1242,6 @@ load();
 applyTheme(document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light');
 render();
 </script>
-<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/v4bc70e2c01a94c73b74392e4234840661791215815920" integrity="sha512-L0ha0OXavK/8okipN9F8BtP84dg9DUhPERbBXzwI6dgTA55d2+yweo3pn5CSFYs45/r8md2+xvUPtTdvTNRfjA==" data-cf-beacon='{"version":"2024.11.0","token":"1954b47c125f43f8b4338b3c4f804e4f","spa":2}' crossorigin="anonymous"></script>
-<script>(function(){function c(){var b=a.contentDocument||(a.contentWindow&&a.contentWindow.document);if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a479fa5cbcd6fc49',t:'MTc5MTUxMzE3OQ=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+<script>(function(){function c(){var b=a.contentDocument||(a.contentWindow&&a.contentWindow.document);if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a47a1f852c0d12f9',t:'MTc5MTUxNDcwMQ=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script><script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/v4bc70e2c01a94c73b74392e4234840661791215815920" integrity="sha512-L0ha0OXavK/8okipN9F8BtP84dg9DUhPERbBXzwI6dgTA55d2+yweo3pn5CSFYs45/r8md2+xvUPtTdvTNRfjA==" data-cf-beacon='{"version":"2024.11.0","token":"1954b47c125f43f8b4338b3c4f804e4f","spa":2}' crossorigin="anonymous"></script>
+</body>
 </html>
