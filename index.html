@@ -41,7 +41,7 @@ body{
   font-size:15px; line-height:1.45;
   transition:color .3s ease;
 }
-/* анимированный фон-волны (обе темы) */
+/* анимированный фон-«аврора» на весь экран (обе темы) */
 #bgfx{position:fixed; inset:0; width:100%; height:100%; z-index:-1; display:block; pointer-events:none}
 @media (prefers-reduced-motion: reduce){
   #bgfx{opacity:.55}
@@ -93,20 +93,23 @@ b,strong{font-weight:600}
 .filter-info .linkish{padding:0 2px}
 /* ============ плавающие заметки по категориям ============ */
 .notes-fab{
-  position:fixed; right:18px; bottom:18px; z-index:46;
-  width:54px; height:54px; border-radius:50%; border:none; cursor:pointer;
-  background:var(--accent); color:var(--on-accent); font-size:22px; line-height:1;
-  display:grid; place-items:center; box-shadow:0 6px 20px rgba(16,24,40,.28);
-  transition:transform .15s, filter .15s;
+  position:fixed; right:16px; bottom:16px; z-index:46;
+  display:inline-flex; align-items:center; gap:7px;
+  height:38px; padding:0 13px; border-radius:999px; border:1px solid var(--border);
+  cursor:pointer; background:var(--card); color:var(--text);
+  font-size:13px; font-weight:650; font-family:inherit;
+  box-shadow:0 4px 14px rgba(16,24,40,.18);
+  transition:transform .15s, border-color .15s;
 }
-.notes-fab:hover{transform:scale(1.06); filter:brightness(1.06)}
+.notes-fab:hover{transform:translateY(-1px); border-color:var(--accent)}
 .notes-fab:active{transform:scale(.97)}
-.np-badge{position:absolute; top:-4px; right:-4px; min-width:19px; height:19px; padding:0 5px;
-  border-radius:999px; background:var(--danger); color:#fff; font-size:11px; font-weight:700;
-  display:grid; place-items:center; border:2px solid var(--bg)}
+.nf-ico{font-size:14px; line-height:1}
+.np-badge{min-width:19px; height:19px; padding:0 5px; border-radius:999px;
+  background:var(--accent); color:var(--on-accent); font-size:11px; font-weight:700;
+  display:grid; place-items:center}
 .np-badge[hidden]{display:none}
 .notes-panel{
-  position:fixed; right:18px; bottom:82px; z-index:46;
+  position:fixed; right:16px; bottom:66px; z-index:46;
   width:min(380px, calc(100vw - 28px)); max-height:min(62vh, 540px);
   display:flex; flex-direction:column; overflow:hidden; animation:npop .16s ease;
 }
@@ -144,8 +147,8 @@ b,strong{font-weight:600}
   border-radius:8px; background:var(--hover); color:var(--text); font-size:13px;
   white-space:pre-line; word-break:break-word}
 @media (max-width:680px){
-  .notes-fab{right:14px; bottom:14px; width:50px; height:50px}
-  .notes-panel{right:14px; bottom:74px}
+  .notes-fab{right:14px; bottom:14px; height:36px; padding:0 11px}
+  .notes-panel{right:14px; bottom:60px}
 }
 .rem-badge{display:inline-flex; align-items:center; padding:3px 11px; border-radius:999px;
   background:var(--accent-weak); color:var(--accent); font-size:13px; font-weight:700;
@@ -377,7 +380,9 @@ b,strong{font-weight:600}
     </div>
     <div id="notesList"></div>
   </div>
-  <button type="button" class="notes-fab" id="notesBtn" aria-expanded="false" aria-controls="notesPanel" title="Заметки по категориям">📝<span class="np-badge num" id="npBadge" hidden></span></button>
+  <button type="button" class="notes-fab" id="notesBtn" aria-expanded="false" aria-controls="notesPanel" title="Заметки по категориям">
+    <span class="nf-ico">📝</span><span class="nf-txt">Заметки</span><span class="np-badge num" id="npBadge" hidden></span>
+  </button>
 </div>
 
 <!-- ======== модалка: товар ======== -->
@@ -1165,63 +1170,49 @@ $('#wipeBtn').addEventListener('click', async () => {
   if (ok){ state = { categories: [], items: [] }; save(); render(); }
 });
 
-/* ================= анимированный фон: полупрозрачные волны ================= */
+/* ================= анимированный фон: halftone-волна с инверсией ================= */
 const BGFX = (() => {
   const cv = document.getElementById('bgfx');
   if (!cv) return { setTheme(){} };
   const ctx = cv.getContext ? cv.getContext('2d') : null;
   if (!ctx) return { setTheme(){} }; /* нет canvas-движка — просто пропускаем */
   const reduceMotion = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
-  let W = 0, H = 0, layers = [], raf = null, running = false, lastTs = 0, t = 0, dark = false;
+  let W = 0, H = 0, raf = null, running = false, lastTs = 0, t = 0, sp = 34, dark = false;
 
-  /* палитры волн [r,g,b,alpha]: светлый фон — заметнее, тёмный — приглушённее */
-  const palette = () => dark ? [
-    [123, 147, 255, .09],
-    [ 61, 214, 140, .055],
-    [  0, 162, 199, .075],
-    [214,  64, 159, .05]
-  ] : [
-    [ 91, 124, 250, .16],
-    [ 34, 160, 107, .11],
-    [  0, 162, 199, .14],
-    [214,  64, 159, .08]
-  ];
+  /* инверсия: белый фон — тёмные точки, чёрный фон — светлые точки */
+  const dotColor = () => dark ? [226, 232, 255] : [17, 24, 39];
+  const dotAlpha = () => dark ? 0.30 : 0.34;
+  const dotBase  = () => dark ? 1.15 : 1.25;
 
   function resize(){
     W = window.innerWidth; H = window.innerHeight;
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
     cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    layers = [
-      { baseY: .60, amp: 26, wl: 540, sp: .050, amp2: 16, wl2: 240, sp2: .085 },
-      { baseY: .70, amp: 34, wl: 660, sp: .034, amp2: 20, wl2: 300, sp2: .060 },
-      { baseY: .81, amp: 30, wl: 470, sp: .062, amp2: 15, wl2: 215, sp2: .090 },
-      { baseY: .92, amp: 26, wl: 580, sp: .042, amp2: 18, wl2: 265, sp2: .065 }
-    ];
+    sp = Math.round(Math.max(30, Math.sqrt((W * H) / 1800))); /* ~1800 точек максимум */
   }
   function draw(){
     ctx.clearRect(0, 0, W, H);
-    const cols = palette();
-    for (let i = 0; i < layers.length; i++){
-      const L = layers[i];
-      const [r, g, b, a] = cols[i % cols.length];
-      const ph  = t * L.sp  * Math.PI * 2;
-      const ph2 = t * L.sp2 * Math.PI * 2 + i * 1.7;
-      const grad = ctx.createLinearGradient(0, L.baseY * H - L.amp - L.amp2, 0, H);
-      grad.addColorStop(0, `rgba(${r},${g},${b},${a})`);
-      grad.addColorStop(1, `rgba(${r},${g},${b},0)`);
-      ctx.beginPath();
-      ctx.moveTo(0, H);
-      for (let x = 0; x <= W + 10; x += 10){
-        const y = L.baseY * H
-          + Math.sin((x / L.wl)  * Math.PI * 2 + ph)  * L.amp
-          + Math.sin((x / L.wl2) * Math.PI * 2 + ph2) * L.amp2;
-        ctx.lineTo(x, y);
+    const [r, g, b] = dotColor();
+    const A = dotAlpha(), rB = dotBase(), TAU = Math.PI * 2;
+    for (let y = sp / 2; y < H + sp; y += sp){
+      const gy = y / sp;
+      for (let x = sp / 2; x < W + sp; x += sp){
+        const gx = x / sp;
+        /* две пересекающиеся диагональные волны + медленный третий слой */
+        const u = (gx + gy) * 0.55;
+        const w = (gx - gy) * 0.42;
+        let v = Math.sin(u * 0.9 + t * 1.15)
+              + Math.cos(w * 1.1 - t * 0.8)
+              + Math.sin((u + w) * 0.35 + t * 0.5);
+        v = (v + 3) / 6; /* 0..1 */
+        const alpha = A * (0.08 + 0.92 * v * v);
+        if (alpha < 0.015) continue;
+        ctx.beginPath();
+        ctx.fillStyle = `rgba(${r},${g},${b},${alpha.toFixed(3)})`;
+        ctx.arc(x, y, rB * (0.25 + 1.75 * v * v), 0, TAU);
+        ctx.fill();
       }
-      ctx.lineTo(W, H);
-      ctx.closePath();
-      ctx.fillStyle = grad;
-      ctx.fill();
     }
   }
   function frame(ts){
@@ -1233,7 +1224,7 @@ const BGFX = (() => {
   }
   function start(){
     resize();
-    if (reduceMotion){ t = 12; draw(); return; } /* статичные волны без анимации */
+    if (reduceMotion){ t = 7.3; draw(); return; } /* статичный кадр без анимации */
     if (running) return;
     running = true;
     lastTs = performance.now();
@@ -1262,6 +1253,5 @@ load();
 applyTheme(document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light');
 render();
 </script>
-<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/v4bc70e2c01a94c73b74392e4234840661791215815920" integrity="sha512-L0ha0OXavK/8okipN9F8BtP84dg9DUhPERbBXzwI6dgTA55d2+yweo3pn5CSFYs45/r8md2+xvUPtTdvTNRfjA==" data-cf-beacon='{"version":"2024.11.0","token":"1954b47c125f43f8b4338b3c4f804e4f","spa":2}' crossorigin="anonymous"></script>
-<script>(function(){function c(){var b=a.contentDocument||(a.contentWindow&&a.contentWindow.document);if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a47a2ce3af4d7ecf',t:'MTc5MTUxNTI0OQ=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+<script>(function(){function c(){var b=a.contentDocument||(a.contentWindow&&a.contentWindow.document);if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a47a3d73e860c61b',t:'MTc5MTUxNTkyNw=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
 </html>
