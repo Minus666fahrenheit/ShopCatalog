@@ -1170,67 +1170,115 @@ $('#wipeBtn').addEventListener('click', async () => {
   if (ok){ state = { categories: [], items: [] }; save(); render(); }
 });
 
-/* ================= анимированный фон: halftone-волна с инверсией ================= */
+/* ================= анимированный фон: сеть-плексус с инверсией ================= */
 const BGFX = (() => {
   const cv = document.getElementById('bgfx');
   if (!cv) return { setTheme(){} };
   const ctx = cv.getContext ? cv.getContext('2d') : null;
   if (!ctx) return { setTheme(){} }; /* нет canvas-движка — просто пропускаем */
   const reduceMotion = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
-  let W = 0, H = 0, raf = null, running = false, lastTs = 0, t = 0, sp = 34, dark = false;
+  let W = 0, H = 0, nodes = [], raf = null, running = false, lastTs = 0, dark = false;
+  let mouse = null; /* {x, y} — курсор для интерактива */
 
-  /* инверсия: белый фон — тёмные точки, чёрный фон — светлые точки */
-  const dotColor = () => dark ? [226, 232, 255] : [17, 24, 39];
-  const dotAlpha = () => dark ? 0.30 : 0.34;
-  const dotBase  = () => dark ? 1.15 : 1.25;
+  /* инверсия: белый фон — тёмная сеть, чёрный фон — светлая сеть */
+  const netColor = () => dark ? [226, 232, 255] : [17, 24, 39];
 
+  function makeNodes(){
+    const n = Math.max(40, Math.min(120, Math.round((W * H) / 22000)));
+    nodes = Array.from({ length: n }, () => ({
+      x: Math.random() * W,
+      y: Math.random() * H,
+      vx: (Math.random() - 0.5) * 22,   /* px/сек — медленный дрейф */
+      vy: (Math.random() - 0.5) * 22,
+      r: 1.1 + Math.random() * 0.9
+    }));
+  }
   function resize(){
     W = window.innerWidth; H = window.innerHeight;
     const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
     cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    sp = Math.round(Math.max(30, Math.sqrt((W * H) / 1800))); /* ~1800 точек максимум */
+    makeNodes();
+  }
+  function step(dt){
+    const PULL_R = 170, PULL = 16, VMAX = 26;
+    for (const p of nodes){
+      if (mouse){
+        const dx = mouse.x - p.x, dy = mouse.y - p.y;
+        const d = Math.hypot(dx, dy);
+        if (d > 1 && d < PULL_R){
+          p.vx += (dx / d) * PULL * dt;
+          p.vy += (dy / d) * PULL * dt;
+        }
+      }
+      const v = Math.hypot(p.vx, p.vy);
+      if (v > VMAX){ p.vx *= VMAX / v; p.vy *= VMAX / v; }
+      p.x += p.vx * dt; p.y += p.vy * dt;
+      /* мягкий заворот через края */
+      if (p.x < -20) p.x = W + 20; else if (p.x > W + 20) p.x = -20;
+      if (p.y < -20) p.y = H + 20; else if (p.y > H + 20) p.y = -20;
+    }
   }
   function draw(){
     ctx.clearRect(0, 0, W, H);
-    const [r, g, b] = dotColor();
-    const A = dotAlpha(), rB = dotBase(), TAU = Math.PI * 2;
-    for (let y = sp / 2; y < H + sp; y += sp){
-      const gy = y / sp;
-      for (let x = sp / 2; x < W + sp; x += sp){
-        const gx = x / sp;
-        /* две пересекающиеся диагональные волны + медленный третий слой */
-        const u = (gx + gy) * 0.55;
-        const w = (gx - gy) * 0.42;
-        let v = Math.sin(u * 0.9 + t * 1.15)
-              + Math.cos(w * 1.1 - t * 0.8)
-              + Math.sin((u + w) * 0.35 + t * 0.5);
-        v = (v + 3) / 6; /* 0..1 */
-        const alpha = A * (0.08 + 0.92 * v * v);
-        if (alpha < 0.015) continue;
+    const [r, g, b] = netColor();
+    const linkDist = Math.min(150, Math.max(105, Math.min(W, H) * 0.12));
+    const ld2 = linkDist * linkDist;
+    /* линии между близкими узлами; рядом с курсором — ярче */
+    for (let i = 0; i < nodes.length; i++){
+      const a = nodes[i];
+      for (let j = i + 1; j < nodes.length; j++){
+        const c = nodes[j];
+        const dx = a.x - c.x, dy = a.y - c.y;
+        const d2 = dx * dx + dy * dy;
+        if (d2 > ld2) continue;
+        let al = 0.13 * (1 - Math.sqrt(d2) / linkDist);
+        if (mouse){
+          const pmx = (a.x + c.x) / 2 - mouse.x, pmy = (a.y + c.y) / 2 - mouse.y;
+          const pm = Math.hypot(pmx, pmy);
+          if (pm < 190) al *= 1 + 2.4 * (1 - pm / 190);
+        }
+        if (al < 0.012) continue;
+        ctx.strokeStyle = `rgba(${r},${g},${b},${Math.min(0.55, al).toFixed(3)})`;
+        ctx.lineWidth = 1;
         ctx.beginPath();
-        ctx.fillStyle = `rgba(${r},${g},${b},${alpha.toFixed(3)})`;
-        ctx.arc(x, y, rB * (0.25 + 1.75 * v * v), 0, TAU);
-        ctx.fill();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(c.x, c.y);
+        ctx.stroke();
       }
+    }
+    /* точки-узлы */
+    for (const p of nodes){
+      let al = 0.30;
+      if (mouse){
+        const dm = Math.hypot(p.x - mouse.x, p.y - mouse.y);
+        if (dm < 190) al += 0.45 * (1 - dm / 190);
+      }
+      ctx.beginPath();
+      ctx.fillStyle = `rgba(${r},${g},${b},${al.toFixed(3)})`;
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      ctx.fill();
     }
   }
   function frame(ts){
     if (!running) return;
     const dt = Math.min((ts - lastTs) / 1000, 0.05);
-    lastTs = ts; t += dt;
+    lastTs = ts;
+    step(dt);
     draw();
     raf = requestAnimationFrame(frame);
   }
   function start(){
     resize();
-    if (reduceMotion){ t = 7.3; draw(); return; } /* статичный кадр без анимации */
+    if (reduceMotion){ draw(); return; } /* статичная сеть без анимации */
     if (running) return;
     running = true;
     lastTs = performance.now();
     raf = requestAnimationFrame(frame);
   }
   window.addEventListener('resize', () => { resize(); if (!running) draw(); });
+  window.addEventListener('pointermove', e => { mouse = { x: e.clientX, y: e.clientY }; }, { passive: true });
+  window.addEventListener('pointerleave', () => { mouse = null; });
   document.addEventListener('visibilitychange', () => {
     if (document.hidden){ if (raf) cancelAnimationFrame(raf); raf = null; running = false; }
     else if (!reduceMotion){ running = true; lastTs = performance.now(); raf = requestAnimationFrame(frame); }
@@ -1253,5 +1301,5 @@ load();
 applyTheme(document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light');
 render();
 </script>
-<script>(function(){function c(){var b=a.contentDocument||(a.contentWindow&&a.contentWindow.document);if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a47a3d73e860c61b',t:'MTc5MTUxNTkyNw=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+<script>(function(){function c(){var b=a.contentDocument||(a.contentWindow&&a.contentWindow.document);if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a47a42d6bcb6c137',t:'MTc5MTUxNjE0OA=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
 </html>
